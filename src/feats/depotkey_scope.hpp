@@ -2,7 +2,7 @@
 //
 // Pure manifest-scope predicate for the depot-key feature.
 //
-// SLSsteam's manifest machinery — the synchronous blob staging in
+// SteamTools's manifest machinery — the synchronous blob staging in
 // CDepotDownloadMgr::BYldRequestDepotManifest and the GetManifestRequestCode
 // injection in ManifestCode — must engage ONLY for content WE supply.  A
 // depot key that Steam returned legitimately (an owned game, or a Proton

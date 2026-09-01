@@ -70,7 +70,7 @@ std::vector<std::string> Utils::strsplit(const char* str, const char* delimeter)
 	return splits;
 }
 
-// Self-contained SHA-256 (FIPS 180-4).  SLSsteam runs in the LD_AUDIT link
+// Self-contained SHA-256 (FIPS 180-4).  SteamTools runs in the LD_AUDIT link
 // namespace, isolated from the application's libraries: the old code tried to
 // borrow Steam's libcrypto via dlsym, but RTLD_NOLOAD/RTLD_DEFAULT cannot see
 // across the namespace (so the digest came out all-zeroes), and force-loading

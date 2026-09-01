@@ -2,21 +2,21 @@
 # Package the release zip that GitHub releases distribute.
 #
 # Produces:
-#   dist/slsteam-moon-linux-<version>.zip
+#   dist/steamtools-moon-linux-<version>.zip
 #
-# Layout inside the zip (matches what consumers and luatools-moon
-# expect: a single top-level slsteam-moon-<version>/ directory containing
+# Layout inside the zip (matches what consumers and steamtools-moon
+# expect: a single top-level steamtools-moon-<version>/ directory containing
 # setup.sh and bin/, and the assets setup.sh references):
 #
-#   slsteam-moon-<version>/
+#   steamtools-moon-<version>/
 #     bin/
-#       SLSsteam.so
+#       SteamTools.so
 #       library-inject.so
 #       pattern-refresh
 #     docs/
-#       LICENSE/                   (third-party + slsteam-moon licenses)
+#       LICENSE/                   (third-party + steamtools-moon licenses)
 #     res/
-#       config.yaml                (default config copied to ~/.config/SLSsteam)
+#       config.yaml                (default config copied to ~/.config/SteamTools)
 #     setup.sh                     (installer the user runs)
 #     tools/
 #       steamstub-bypass/          (helper called by setup.sh install_steamstub)
@@ -29,7 +29,7 @@
 #         Steamless.CLI.exe
 #         Plugins/*.dll
 #
-# Requires: bin/SLSsteam.so + bin/library-inject.so + bin/pattern-refresh
+# Requires: bin/SteamTools.so + bin/library-inject.so + bin/pattern-refresh
 # (run scripts/build.sh first).
 #
 # Usage:
@@ -66,7 +66,7 @@ if [ -z "$VERSION" ]; then
 fi
 
 # Sanity-check the binaries are present and look right.
-for f in bin/SLSsteam.so bin/library-inject.so bin/pattern-refresh; do
+for f in bin/SteamTools.so bin/library-inject.so bin/pattern-refresh; do
 	if [ ! -f "$f" ]; then
 		echo "missing $f" >&2
 		echo "build first:  scripts/build.sh   (or scripts/build.sh --host for dev)" >&2
@@ -75,7 +75,7 @@ for f in bin/SLSsteam.so bin/library-inject.so bin/pattern-refresh; do
 done
 
 # Empty/zero-byte binaries would silently produce a broken release zip.
-if [ ! -s bin/SLSsteam.so ] || [ ! -s bin/library-inject.so ] \
+if [ ! -s bin/SteamTools.so ] || [ ! -s bin/library-inject.so ] \
    || [ ! -s bin/pattern-refresh ] || [ ! -x bin/pattern-refresh ]; then
 	echo "binaries in bin/ are empty -- rebuild before packaging" >&2
 	exit 1
@@ -97,7 +97,7 @@ check_binary_freshness() {
 		exit 1
 	fi
 }
-check_binary_freshness bin/SLSsteam.so SLSsteam.so \
+check_binary_freshness bin/SteamTools.so SteamTools.so \
 	src include lib res Makefile scripts/build.sh scripts/_build-host.sh \
 	scripts/_build-portable.sh scripts/Dockerfile scripts/check-sls-abi.sh embed-config.sh embed-version.sh
 check_binary_freshness bin/library-inject.so library-inject.so \
@@ -107,17 +107,17 @@ check_binary_freshness bin/pattern-refresh pattern-refresh \
 	src/utils/process_lock.hpp res/pattern-public-key.hex Makefile \
 	scripts/build.sh scripts/_build-host.sh scripts/_build-portable.sh scripts/Dockerfile
 
-scripts/check-sls-abi.sh bin/SLSsteam.so
+scripts/check-sls-abi.sh bin/SteamTools.so
 scripts/check-pattern-refresh-abi.sh bin/pattern-refresh
 
-PKG_DIR="dist/slsteam-moon-${VERSION}"
-ZIP_PATH="dist/slsteam-moon-linux-${VERSION}.zip"
+PKG_DIR="dist/steamtools-moon-${VERSION}"
+ZIP_PATH="dist/steamtools-moon-linux-${VERSION}.zip"
 
 echo "==> staging $PKG_DIR"
 rm -rf "$PKG_DIR" "$ZIP_PATH"
 mkdir -p "$PKG_DIR/bin" "$PKG_DIR/docs" "$PKG_DIR/res" "$PKG_DIR/tools"
 
-cp bin/SLSsteam.so       "$PKG_DIR/bin/"
+cp bin/SteamTools.so       "$PKG_DIR/bin/"
 cp bin/library-inject.so "$PKG_DIR/bin/"
 cp bin/pattern-refresh   "$PKG_DIR/bin/"
 cp setup.sh              "$PKG_DIR/"
@@ -149,15 +149,15 @@ fi
 cp -r tools/steamless-bin "$PKG_DIR/tools/"
 
 echo "==> zipping $ZIP_PATH"
-( cd dist && zip -qr -9 "slsteam-moon-linux-${VERSION}.zip" "slsteam-moon-${VERSION}" )
+( cd dist && zip -qr -9 "steamtools-moon-linux-${VERSION}.zip" "steamtools-moon-${VERSION}" )
 # Publish a sha256 sidecar next to the asset. The installer on the paired
-# luatools-moon branch fetches "<asset>.sha256" and refuses an asset that does
+# steamtools-moon branch fetches "<asset>.sha256" and refuses an asset that does
 # not match it, so a truncated or altered archive is caught before it is unpacked
 # and executed; an installer that predates that change ignores the sidecar. This
 # detects transport and mirror damage, NOT a compromised publishing account —
 # that needs a detached signature and a project signing key.
-( cd dist && sha256sum "slsteam-moon-linux-${VERSION}.zip" \
-    > "slsteam-moon-linux-${VERSION}.zip.sha256" )
+( cd dist && sha256sum "steamtools-moon-linux-${VERSION}.zip" \
+    > "steamtools-moon-linux-${VERSION}.zip.sha256" )
 
 # Show a quick listing so callers can eyeball the contents.
 echo

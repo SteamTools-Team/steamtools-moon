@@ -1,12 +1,12 @@
 # Diagnostics and thread-affinity switches
 
 Everything here is off or at its default unless you set it. None of it changes
-what SLSsteam does, only *where* work runs and whether a trace is written.
+what SteamTools does, only *where* work runs and whether a trace is written.
 
-## `SLSSTEAM_AFFTRACE` — thread-affinity trace (off by default)
+## `STEAMTOOLS_AFFTRACE` — thread-affinity trace (off by default)
 
 ```bash
-SLSSTEAM_AFFTRACE=1 <steam wrapper>
+STEAMTOOLS_AFFTRACE=1 <steam wrapper>
 ```
 
 Accepted true values: `1`, `y`, `yes`, `on`, `true` (case-insensitive).
@@ -14,7 +14,7 @@ Anything else, including unset, leaves tracing off. When off, each hook-side
 call is a single relaxed atomic load and an early return, so the Steam IPC hot
 path is untouched in normal use and no file is created.
 
-When on, records go to `~/.SLSsteam.afftrace.log`, created `0600` and truncated
+When on, records go to `~/.SteamTools.afftrace.log`, created `0600` and truncated
 at start. The file is hard-capped: `4096` event lines plus `48` per-hour summary
 lines. There is no rotation — once the cap is hit, writing stops.
 
@@ -119,10 +119,10 @@ given, inside one exclusive execution window, so the total order of Steam-owned
 calls never inverts, and a single execution mutex guarantees two threads never
 run this subsystem's Steam-owned work at the same time.
 
-### `SLSSTEAM_OWNER_QUEUE_MAX_STALE_MS` — the "owner never drains" answer
+### `STEAMTOOLS_OWNER_QUEUE_MAX_STALE_MS` — the "owner never drains" answer
 
 Default `30000`, accepted range `0`–`600000`. Invalid values are ignored (with a
-warning in `~/.SLSsteam.log`) and the default is used.
+warning in `~/.SteamTools.log`) and the default is used.
 
 Fire-and-forget means nobody is waiting, so there has to be an answer to *what
 if the owner never runs another IPC frame* (client wedged, dispatcher thread
@@ -136,15 +136,15 @@ failure than "the call ran on the watcher thread, exactly as it always used to".
 * It is evaluated on the watcher thread's existing idle tick (the inotify wait
   is a bounded `poll`, 500 ms, so there is no extra thread) and once per submit.
 * It runs the **whole** pending set inline, in order.
-* It is reported as a `warn` in `~/.SLSsteam.log` and as a `QUEUE_STALE` /
+* It is reported as a `warn` in `~/.SteamTools.log` and as a `QUEUE_STALE` /
   `direct_stale` record in the trace, so it is never silent.
-* `SLSSTEAM_OWNER_QUEUE_MAX_STALE_MS=0` turns it off, i.e. explicitly chooses
+* `STEAMTOOLS_OWNER_QUEUE_MAX_STALE_MS=0` turns it off, i.e. explicitly chooses
   "accept eventual execution on the owner thread, whenever that happens".
 
-### `SLSSTEAM_OWNER_QUEUE` — disable the handoff entirely
+### `STEAMTOOLS_OWNER_QUEUE` — disable the handoff entirely
 
 ```bash
-SLSSTEAM_OWNER_QUEUE=off <steam wrapper>
+STEAMTOOLS_OWNER_QUEUE=off <steam wrapper>
 ```
 
 Accepted false values: `0`, `off`, `no`, `n`, `false`, `disable`, `disabled`
@@ -155,13 +155,13 @@ hardening off.
 With the queue off, every watcher-originated Steam call runs on the calling
 thread, which is exactly the pre-hardening behaviour.
 
-`SLSSTEAM_OWNER_QUEUE_DEADLINE_MS` is **obsolete**: the handoff no longer
+`STEAMTOOLS_OWNER_QUEUE_DEADLINE_MS` is **obsolete**: the handoff no longer
 blocks, so there is no deadline to set. If it is still present in a wrapper
 script it is ignored and a warning is logged.
 
 ### What the log says
 
-`~/.SLSsteam.log` reports the policy once at startup and then which path each
+`~/.SteamTools.log` reports the policy once at startup and then which path each
 event took, e.g.
 
 ```

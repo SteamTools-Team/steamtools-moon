@@ -48,9 +48,9 @@
 //
 // Gating: the empty-depot filter is always active and only recognizes depots
 // imported as managed. The gid rewrite acts for any configured app-scoped pin
-// and honours SLSSTEAM_RECONCILE_PIN. The separate locked-app policy in
+// and honours STEAMTOOLS_RECONCILE_PIN. The separate locked-app policy in
 // shouldDisableUpdates controls update suppression, not this rewrite. Optional
-// per-call diagnostic logging is gated on SLSSTEAM_RECONCILE_TRACE.
+// per-call diagnostic logging is gated on STEAMTOOLS_RECONCILE_TRACE.
 
 #pragma once
 

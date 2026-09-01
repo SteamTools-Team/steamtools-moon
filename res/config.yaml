@@ -40,9 +40,9 @@ AppIds:
 #Enables playing of not owned games. Respects black-/whitelist AppIds
 PlayNotOwnedGames: no
 
-#DO NOT ADD APPIDS HERE. Recent slsteam-moon versions read the game list
+#DO NOT ADD APPIDS HERE. Recent steamtools-moon versions read the game list
 #directly from ~/.steam/steam/config/stplug-in. To add AppIDs manually
-#(without relying on stplug-in), use ~/.config/SLSsteam/luaappids.yaml.
+#(without relying on stplug-in), use ~/.config/SteamTools/luaappids.yaml.
 #This section is kept only for backward compatibility and will be removed
 #in future versions.
 AdditionalApps:
@@ -76,11 +76,11 @@ SubscriptionTimestamps:
 #Blocks games from unlocking on wrong accounts
 DenuvoGames:
 
-#Automatically disable SLSsteam when steamclient.so does not match a predefined file hash that is known to work
-#You should enable this if you're planing to use SLSsteam with Steam Deck's gamemode
+#Automatically disable SteamTools when steamclient.so does not match a predefined file hash that is known to work
+#You should enable this if you're planing to use SteamTools with Steam Deck's gamemode
 #DEPRECATED / no-op: this option is force-disabled in code. The Steam wrapper's
 #crash-loop fail-safe now covers the Game Mode boot protection this guarded, so
-#an unknown client hash no longer disables SLSsteam. Setting it has no effect.
+#an unknown client hash no longer disables SteamTools. Setting it has no effect.
 SafeMode: no
 
 #Toggles notifications via notify-send
@@ -90,10 +90,10 @@ Notifications: yes
 #Mostly useful for development so I don't accidentally miss an update
 WarnHashMissmatch: no
 
-#Notify when SLSsteam is done initializing
+#Notify when SteamTools is done initializing
 NotifyInit: yes
 
-#Enable sending commands to SLSsteam via /tmp/SLSsteam.API
+#Enable sending commands to SteamTools via /tmp/SteamTools.API
 API: no
 
 #Disable cloud saves for unlocked games. Default "no" so CloudRedirect (shipped

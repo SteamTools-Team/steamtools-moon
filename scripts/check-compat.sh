@@ -1,12 +1,12 @@
 #!/bin/bash
-# Check slsteam-moon binary compatibility against the running host.
+# Check steamtools-moon binary compatibility against the running host.
 
 # Resolve repo root from script location (scripts/check-compat.sh).
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_ROOT"
 
-BINARY="./bin/SLSsteam.so"
+BINARY="./bin/SteamTools.so"
 
 if [ ! -f "$BINARY" ]; then
 	echo "ERROR: $BINARY not found!"
@@ -15,7 +15,7 @@ if [ ! -f "$BINARY" ]; then
 fi
 
 echo "========================================="
-echo "  SLSsteam Binary Compatibility Check"
+echo "  SteamTools Binary Compatibility Check"
 echo "========================================="
 echo ""
 

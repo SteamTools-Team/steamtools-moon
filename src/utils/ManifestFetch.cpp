@@ -65,7 +65,7 @@ void setOfflineStatus(bool offline)
 {
 	const char* home = std::getenv("HOME");
 	if (!home) return;
-	std::string path = std::string(home) + "/.config/SLSsteam/offline";
+	std::string path = std::string(home) + "/.config/SteamTools/offline";
 	if (offline)
 	{
 		std::ofstream f(path);
@@ -87,9 +87,9 @@ struct OfflineCleaner
 		const char* home = std::getenv("HOME");
 		if (home)
 		{
-			std::string path = std::string(home) + "/.config/SLSsteam/offline";
+			std::string path = std::string(home) + "/.config/SteamTools/offline";
 			std::remove(path.c_str());
-			std::string dir = std::string(home) + "/.config/SLSsteam";
+			std::string dir = std::string(home) + "/.config/SteamTools";
 			if (std::filesystem::exists(dir))
 			{
 				std::error_code ec;
@@ -406,7 +406,7 @@ HttpResponse httpGet(const std::string& url, const JobBudget* budget = nullptr,
 	// the wrong stack and glibc's __longjmp_chk aborts the whole client.
 	// NOSIGNAL switches libcurl to signal-free timeouts.
 	p_curl_easy_setopt(c, CURLOPT_NOSIGNAL, 1L);
-	p_curl_easy_setopt(c, CURLOPT_USERAGENT, "SLSsteam-ManifestFetch/0.1");
+	p_curl_easy_setopt(c, CURLOPT_USERAGENT, "SteamTools-ManifestFetch/0.1");
 	// Pin the system trust store (see cainfo.hpp) so the https manifest
 	// providers verify on SteamOS/Arch; no-op when no bundle is found.
 	if (const char* f = ca::bundleFile()) p_curl_easy_setopt(c, CURLOPT_CAINFO, f);
@@ -742,7 +742,7 @@ retry_cdn:
 		return false;
 	}
 
-	const std::string tmpOutPath = targetPath + ".slsteam_tmp." +
+	const std::string tmpOutPath = targetPath + ".steamtools_tmp." +
 	                               std::to_string(static_cast<unsigned long>(getpid())) + "." +
 	                               std::to_string(reinterpret_cast<uintptr_t>(&zipResp));
 	if (manifest.size() < sizeof(std::uint32_t)

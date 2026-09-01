@@ -252,7 +252,7 @@ NetworkFailure httpGetJson(const std::string& url, std::string& body,
 	                   std::min(timeoutMs, 8000L));
 	// Same multi-thread safety justification as ManifestFetch::httpGet.
 	p_curl_easy_setopt(c, CURLOPT_NOSIGNAL, 1L);
-	p_curl_easy_setopt(c, CURLOPT_USERAGENT, "SLSsteam-AppInfoProvision/0.1");
+	p_curl_easy_setopt(c, CURLOPT_USERAGENT, "SteamTools-AppInfoProvision/0.1");
 	// Pin the system trust store (see cainfo.hpp): the libcurl Steam loads
 	// otherwise fails CA verification on SteamOS/Arch with curl error 60
 	// ("Peer certificate cannot be authenticated"), the exact failure that
@@ -282,18 +282,18 @@ NetworkFailure httpGetJson(const std::string& url, std::string& body,
 
 // ---------------------------------------------------------------------------
 // Provider list.  Each entry is a URL template with `{appid}`.
-// First success wins.  Override via env SLSSTEAM_APPINFO_PROVIDER.
+// First success wins.  Override via env STEAMTOOLS_APPINFO_PROVIDER.
 // ---------------------------------------------------------------------------
 
 const std::vector<std::string>& providerChain()
 {
 	// Built once.  The first entry can be overridden via the env var
-	// SLSSTEAM_APPINFO_PROVIDER (a URL template containing `{appid}`),
+	// STEAMTOOLS_APPINFO_PROVIDER (a URL template containing `{appid}`),
 	// which is handy for testing the fetch/retry path against a custom
 	// or deliberately-slow endpoint without rebuilding.
 	static const std::vector<std::string> chain = [] {
 		std::vector<std::string> c;
-		if (const char* ov = std::getenv("SLSSTEAM_APPINFO_PROVIDER");
+		if (const char* ov = std::getenv("STEAMTOOLS_APPINFO_PROVIDER");
 		    ov && *ov)
 		{
 			c.emplace_back(ov);
@@ -1050,10 +1050,10 @@ std::int64_t cachePairMtimeSecsImpl(uint32_t appId) noexcept
 // Freshness window for legacy/full provider passes. Startup accepts a
 // structurally validated pair regardless of age; PICS change numbers drive
 // targeted refreshes without turning every relaunch into a catalog fetch.
-// Override via SLSSTEAM_PROVISION_TTL (seconds; 0 disables the cache).
+// Override via STEAMTOOLS_PROVISION_TTL (seconds; 0 disables the cache).
 long long provisionTtlSecs()
 {
-	if (const char* ov = std::getenv("SLSSTEAM_PROVISION_TTL"); ov && *ov)
+	if (const char* ov = std::getenv("STEAMTOOLS_PROVISION_TTL"); ov && *ov)
 	{
 		try { return std::stoll(ov); } catch (...) {}
 	}
@@ -2731,10 +2731,10 @@ int provisionAppsPass(const std::string& appinfoVdfPath,
 	// through to the steamcmd.net HTTP chain inside provisionApp.  Skip
 	// only those apps whose buffer is still fresh on disk (the cache TTL
 	// would short-circuit them anyway), so a warm relaunch makes no CM
-	// request at all.  Disable entirely via SLSSTEAM_DISABLE_CM=1.
+	// request at all.  Disable entirely via STEAMTOOLS_DISABLE_CM=1.
 	ProvisionPassState pass;
 	const bool cmDisabled = [] {
-		const char* v = std::getenv("SLSSTEAM_DISABLE_CM");
+		const char* v = std::getenv("STEAMTOOLS_DISABLE_CM");
 		return v && *v && std::string(v) != "0";
 	}();
 	if (!cmDisabled)
@@ -3254,7 +3254,7 @@ bool asyncProvisioningEnabled()
 {
 	return asyncProvisionEnabled(
 		g_config.asyncProvision.get(),
-		std::getenv("SLSSTEAM_ASYNC_PROVISION"));
+		std::getenv("STEAMTOOLS_ASYNC_PROVISION"));
 }
 
 void flushPendingProtonMappings()

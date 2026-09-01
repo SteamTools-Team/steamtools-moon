@@ -10,7 +10,7 @@
 int main()
 {
 	const std::string path =
-		"/tmp/slssteam-test-process-lock." + std::to_string(getpid());
+		"/tmp/steamtools-test-process-lock." + std::to_string(getpid());
 	std::error_code ec;
 	std::filesystem::remove(path, ec);
 

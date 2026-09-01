@@ -102,10 +102,10 @@ static void unload()
 	HotReload::shutdown();
 	Hooks::remove();
 
-	//This is absolutely unnessecary for applications loading SLSsteam where it cancels from setup()
+	//This is absolutely unnessecary for applications loading SteamTools where it cancels from setup()
 	//Would be nice to run have for failed load() attempts though 
 	//lm_module_t mod;
-	//if (LM_FindModule("SLSsteam.so", &mod))
+	//if (LM_FindModule("SteamTools.so", &mod))
 	//{
 	//	//TODO: Investigate crash ?
 	//	//Possibly: Might be because we're unmapping what ever thread we're running in
@@ -198,10 +198,10 @@ static void setup()
 	// setup lock. Each audit namespace has its own statics; a secondary copy
 	// still needs to return narrow flags even when it skips the heavier setup.
 	const bool narrowAudit = AuditBinding::narrowValueEnabled(
-		std::getenv("SLSSTEAM_AUDIT_NARROW"));
+		std::getenv("STEAMTOOLS_AUDIT_NARROW"));
 	const bool bindAllAudit = !narrowAudit
 		|| AuditBinding::bindAllValueEnabled(
-			std::getenv("SLSSTEAM_AUDIT_BINDALL"));
+			std::getenv("STEAMTOOLS_AUDIT_BINDALL"));
 	g_auditBindAll.store(bindAllAudit, std::memory_order_release);
 	g_auditPolicyReady.store(true, std::memory_order_release);
 
@@ -225,8 +225,8 @@ static void setup()
 		g_setupLock.reset();
 	}
 
-	g_pLog->debug("SLSsteam loading in %s\n", proc.name);
-	// Thread-affinity diagnostics: opt-in only (SLSSTEAM_AFFTRACE=1), a no-op
+	g_pLog->debug("SteamTools loading in %s\n", proc.name);
+	// Thread-affinity diagnostics: opt-in only (STEAMTOOLS_AFFTRACE=1), a no-op
 	// otherwise. Must come before the watchers and hooks so the very first
 	// callback and IPC frame are covered when it IS enabled.
 	if (AffTrace::init())
@@ -246,9 +246,9 @@ static void setup()
 	// (reaper, steamwebhelper, games) don't re-audit and re-run our
 	// hooks in foreign processes.  setup() also early-outs on non-steam
 	// processes, but cleaning the env is cheaper and avoids surprises.
-	cleanEnvVar("LD_AUDIT", "SLSsteam.so");
+	cleanEnvVar("LD_AUDIT", "SteamTools.so");
 	cleanEnvVar("LD_AUDIT", "library-inject.so");
-	cleanEnvVar("LD_AUDIT", "libSLSsteam.so");
+	cleanEnvVar("LD_AUDIT", "libSteamTools.so");
 	cleanEnvVar("LD_AUDIT", "libSLS-library-inject.so");
 
 
@@ -433,10 +433,10 @@ static void load()
 	//
 	// A per-.so `static` flag is NOT enough: under LD_AUDIT glibc instantiates
 	// the auditor (this .so) once per link-map namespace, and a Steam process
-	// can have more than one namespace — so there are TWO copies of SLSsteam.so
+	// can have more than one namespace — so there are TWO copies of SteamTools.so
 	// in the process, each with its own `static`, each running load() against
 	// the SAME (shared) steamclient.so. Confirmed on the affected machine: two
-	// SLSsteam.so mappings in the minidump; load() ran twice with an
+	// SteamTools.so mappings in the minidump; load() ran twice with an
 	// independent guard each time. The single-instance machines never hit it.
 	//
 	// So the one-shot has to be PROCESS-global, shared across those copies. A
@@ -465,7 +465,7 @@ static void load()
 	// genuine "the other module isn't mapped yet" retry on the next objopen
 	// still works) and BEFORE the heavy work.
 	{
-		// The lock used to be /tmp/.slssteam.load.<pid>, opened without O_EXCL or
+		// The lock used to be /tmp/.steamtools.load.<pid>, opened without O_EXCL or
 		// O_NOFOLLOW. Any local process could pre-create that path and hold an
 		// exclusive flock on it; our flock(LOCK_NB) then failed and we SKIPPED
 		// the hooking pass — a lock file that doubled as an injection kill
@@ -486,7 +486,7 @@ static void load()
 			{
 				if (flock(lockFd, LOCK_EX | LOCK_NB) != 0)
 				{
-					// Another SLSsteam.so instance in this process already
+					// Another SteamTools.so instance in this process already
 					// claimed the hooking pass. Bail before re-scanning the
 					// hooked code.
 					g_pLog->info("load: another instance already claimed the hooking pass (guard %p) -> skipping\n",
@@ -510,15 +510,15 @@ static void load()
 	loadDone = true;
 
 	// Runtime evidence is opt-in and used only by the isolated repair runner.
-	// Bind every event to the exact SLSsteam.so bytes that this process loaded;
+	// Bind every event to the exact SteamTools.so bytes that this process loaded;
 	// a source diff or a successful log line alone is not sufficient evidence.
-	if (const char* attestationPath = getenv("SLSSTEAM_ATTESTATION_FILE");
+	if (const char* attestationPath = getenv("STEAMTOOLS_ATTESTATION_FILE");
 	    attestationPath != nullptr && attestationPath[0] != '\0')
 	{
 		lm_module_t selfModule {};
-		if (!LM_FindModule("SLSsteam.so", &selfModule))
+		if (!LM_FindModule("SteamTools.so", &selfModule))
 		{
-			g_pLog->warn("attestation: unable to identify loaded SLSsteam.so\n");
+			g_pLog->warn("attestation: unable to identify loaded SteamTools.so\n");
 		}
 		else
 		{
@@ -550,7 +550,7 @@ static void load()
 	);
 
 	// Log the GNU build-id of every relevant module so "which build is the
-	// user actually running?" is answerable straight from ~/.SLSsteam.log
+	// user actually running?" is answerable straight from ~/.SteamTools.log
 	// (the previous diagnosis required asking the user to run readelf).
 	// libmem resolves modules from /proc/self/maps, so this sees modules in
 	// the main link namespace (steamclient.so, cloud_redirect.so) too, not
@@ -587,7 +587,7 @@ static void load()
 				);
 			}
 		};
-		logBuildId("SLSsteam.so", "candidate");
+		logBuildId("SteamTools.so", "candidate");
 		logBuildId("library-inject.so", "audit-loader");
 		logBuildId("steamclient.so", "steamclient");
 		logBuildId("steamui.so", "steamui");
@@ -634,7 +634,7 @@ static void load()
 
 	SLSAPI::init();
 
-	// Resolve SLSsteam.so's own install root via libmem so the
+	// Resolve SteamTools.so's own install root via libmem so the
 	// runtime helpers (wrapper integration script + bundled tools)
 	// can be located relative to the .so. Falls back to a no-op
 	// silently when those aren't shipped (e.g. development builds
@@ -642,7 +642,7 @@ static void load()
 	{
 		lm_module_t selfMod {};
 		const char* candidates[] = {
-			"SLSsteam.so", "libSLSsteam.so", nullptr
+			"SteamTools.so", "libSteamTools.so", nullptr
 		};
 		bool found = false;
 		for (const char** name = candidates; *name; ++name)
@@ -666,7 +666,7 @@ static void load()
 		}
 		else
 		{
-			g_pLog->debug("SteamStub: could not resolve SLSsteam.so path; feature disabled\n");
+			g_pLog->debug("SteamStub: could not resolve SteamTools.so path; feature disabled\n");
 		}
 	}
 
@@ -707,7 +707,7 @@ static void load()
 		//Funsy easter egg :)
 		if (static_cast<unsigned int>(ymd.month()) == 2 && static_cast<unsigned int>(ymd.day()) == 22)
 		{
-			g_pLog->notify("Happy birthday SLSsteam!");
+			g_pLog->notify("Happy birthday SteamTools!");
 			g_pLog->notifyUser(UserMsg::BirthdayGreeting);
 		}
 		else
@@ -741,8 +741,8 @@ static void load()
 // ───────────────────────────────────────────────────────────────────────
 // Injection model: LD_AUDIT (rtld-audit).
 //
-// SLSsteam is loaded as an audit module via
-//   LD_AUDIT="library-inject.so:SLSsteam.so"
+// SteamTools is loaded as an audit module via
+//   LD_AUDIT="library-inject.so:SteamTools.so"
 // which places it in the dynamic linker's *auditing* link namespace,
 // separate from the application's namespace.  This is essential: the .so
 // statically links protobuf / yaml-cpp / an old-ABI libstdc++ and therefore
@@ -789,7 +789,7 @@ extern "C" unsigned int la_version(unsigned int)
 // address (a no-op redirect). The client launches the webhelper via execv,
 // with the switch embedded inside a `sh -c "exec steamwebhelper.sh ..."`
 // wrapper string, so a substring rewrite is used (CefPort::rewritePortArg).
-// This lives in SLSsteam.so itself — no extra preloaded library.
+// This lives in SteamTools.so itself — no extra preloaded library.
 // ───────────────────────────────────────────────────────────────────────
 namespace
 {
@@ -817,7 +817,7 @@ namespace
 			case AuditBinding::Symbol::Execvpe: return "execvpe";
 			case AuditBinding::Symbol::PosixSpawn: return "posix_spawn";
 			case AuditBinding::Symbol::PosixSpawnp: return "posix_spawnp";
-			case AuditBinding::Symbol::LocalStatsEpoch: return "slsteam_local_stats_epoch_v1";
+			case AuditBinding::Symbol::LocalStatsEpoch: return "steamtools_local_stats_epoch_v1";
 			default: return "<unknown>";
 		}
 	}
@@ -1027,7 +1027,7 @@ extern "C" uintptr_t la_symbind32(Elf32_Sym* sym,
 	switch (symbol)
 	{
 		case AuditBinding::Symbol::LocalStatsEpoch:
-			return reinterpret_cast<uintptr_t>(&slsteam_local_stats_epoch_v1);
+			return reinterpret_cast<uintptr_t>(&steamtools_local_stats_epoch_v1);
 		case AuditBinding::Symbol::Execv:
 			if (!g_realExecv) g_realExecv = reinterpret_cast<execv_t>(orig);
 			return reinterpret_cast<uintptr_t>(&cefExecv);
@@ -1069,7 +1069,7 @@ extern "C" unsigned int la_objopen(struct link_map* map,
 
 	// Keep the historical bind-all policy unless narrowing is explicitly
 	// enabled after its live importer/rewrite gates have been measured.
-	// SLSSTEAM_AUDIT_BINDALL=1 remains a visible rollback switch for a
+	// STEAMTOOLS_AUDIT_BINDALL=1 remains a visible rollback switch for a
 	// narrowed session, while the default is already the safe rollback.  The
 	// preinit-ready guard avoids getenv() in this loader callback; before setup
 	// publishes policy, bind-all is the conservative behavior.

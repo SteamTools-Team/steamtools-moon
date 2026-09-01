@@ -5,7 +5,7 @@
 #   scripts/build.sh --portable
 #   scripts/package.sh
 #
-# Output: dist/slsteam-moon-linux-<version>.zip
+# Output: dist/steamtools-moon-linux-<version>.zip
 #
 # Usage:
 #   scripts/release.sh                # version from res/version.txt

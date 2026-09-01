@@ -7,7 +7,7 @@
 # wrapped exe the first time the user clicks Play. That works, but:
 #   - it adds a ~5-30 s delay on the very first launch of a fresh
 #     install,
-#   - it does nothing if Steam was started with an older SLSsteam.so
+#   - it does nothing if Steam was started with an older SteamTools.so
 #     that lacked v3 support — the user may not realise a restart is
 #     needed before clicking Play.
 #
@@ -18,7 +18,7 @@
 #
 # Usage:
 #   scan-all.sh                       # scan every AddedApp from
-#                                     # ~/.config/SLSsteam/config.yaml
+#                                     # ~/.config/SteamTools/config.yaml
 #   scan-all.sh <appid> [<appid> ...] # only the listed appids
 #
 # Exit code is 0 if every wrapped exe encountered was processed
@@ -29,7 +29,7 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUN_HELPER="$SCRIPT_DIR/run-steamless.sh"
-CONFIG_FILE="$HOME/.config/SLSsteam/config.yaml"
+CONFIG_FILE="$HOME/.config/SteamTools/config.yaml"
 
 log()  { echo "[scan-all] $*"; }
 warn() { echo "[scan-all] WARN: $*" >&2; }
@@ -41,7 +41,7 @@ warn() { echo "[scan-all] WARN: $*" >&2; }
 if [ -z "${STEAMLESS_HOME:-}" ]; then
     for cand in \
         "$SCRIPT_DIR/../steamless-bin" \
-        "$HOME/.local/share/SLSsteam/steamless-bin"
+        "$HOME/.local/share/SteamTools/steamless-bin"
     do
         if [ -f "$cand/Steamless.CLI.exe" ]; then
             STEAMLESS_HOME="$(cd "$cand" && pwd)"

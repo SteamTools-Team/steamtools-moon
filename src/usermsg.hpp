@@ -5,7 +5,7 @@
 // Every desktop popup the end user can ever see is drawn from THIS catalog,
 // as a friendly, localized sentence — never a raw developer diagnostic like
 // "ManifestFetch: blob depot=445701 gid=... all CDN hosts failed (HTTP=503)".
-// Those raw lines still go to ~/.SLSsteam.log for debugging; the screen only
+// Those raw lines still go to ~/.SteamTools.log for debugging; the screen only
 // ever shows the catalog text.
 //
 // The catalog is PURE (no openssl / config / logger), like notify.hpp, so it
@@ -143,19 +143,19 @@ inline UiMessage messageFor(UserMsg m, Lang lang)
 	switch (m)
 	{
 		case UserMsg::LoadSuccess:
-			return { pt ? "slsteam-moon carregou com sucesso."
-			            : "slsteam-moon loaded successfully.",
+			return { pt ? "steamtools-moon carregou com sucesso."
+			            : "steamtools-moon loaded successfully.",
 			         Severity::Info };
 
 		case UserMsg::BirthdayGreeting:
-			return { pt ? "slsteam-moon carregou com sucesso. (E feliz aniversário, SLSsteam!)"
-			            : "slsteam-moon loaded successfully. (And happy birthday, SLSsteam!)",
+			return { pt ? "steamtools-moon carregou com sucesso. (E feliz aniversário, SteamTools!)"
+			            : "steamtools-moon loaded successfully. (And happy birthday, SteamTools!)",
 			         Severity::Info };
 
 		case UserMsg::SteamVersionUnsupported:
-			return { pt ? "O slsteam-moon foi desativado por segurança porque esta "
+			return { pt ? "O steamtools-moon foi desativado por segurança porque esta "
 			              "versão do Steam não é compatível."
-			            : "slsteam-moon was disabled for safety because this Steam "
+			            : "steamtools-moon was disabled for safety because this Steam "
 			              "version isn't compatible.",
 			         Severity::Error };
 
@@ -169,11 +169,11 @@ inline UiMessage messageFor(UserMsg m, Lang lang)
 			         Severity::Warning };
 
 		case UserMsg::InitializationFailed:
-			return { pt ? "O slsteam-moon não encontrou os padrões de código da "
+			return { pt ? "O steamtools-moon não encontrou os padrões de código da "
 			              "Steam, então ela está rodando sem modificações. Isso "
 			              "costuma acontecer quando a Steam se atualiza. Saia do canal "
 			              "beta da Steam e rode o comando de instalação novamente."
-			            : "slsteam-moon couldn't find Steam's code patterns, so Steam "
+			            : "steamtools-moon couldn't find Steam's code patterns, so Steam "
 			              "is running without any modifications. This usually happens "
 			              "after a Steam update. Leave the Steam beta channel and run "
 			              "the install command again.",

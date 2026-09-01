@@ -16,23 +16,23 @@ check() {
 
 HOME="$TMP/home"
 export HOME
-mkdir -p "$HOME/.local/share/SLSsteam/path" "$TMP/usr/bin" "$TMP/usr/games" "$TMP/steam-root"
+mkdir -p "$HOME/.local/share/SteamTools/path" "$TMP/usr/bin" "$TMP/usr/games" "$TMP/steam-root"
 printf '#!/bin/sh\nexit 0\n' > "$TMP/steam-root/steam.sh"
 chmod +x "$TMP/steam-root/steam.sh"
 mkdir -p "$HOME/.steam"
 ln -s "$TMP/steam-root" "$HOME/.steam/steam"
 
-cat > "$HOME/.local/share/SLSsteam/path/steam" <<'EOF'
+cat > "$HOME/.local/share/SteamTools/path/steam" <<'EOF'
 #!/bin/sh
 printf 'WRAPPER bin=%s args=%s\n' "${SLSM_STEAM_BIN:-none}" "$*"
 EOF
-chmod +x "$HOME/.local/share/SLSsteam/path/steam"
+chmod +x "$HOME/.local/share/SteamTools/path/steam"
 
 printf '#!/bin/sh\nprintf "ORIG-BIN %s\\n" "$*"\n' > "$TMP/usr/bin/steam"
 printf '#!/bin/sh\nprintf "ORIG-GAMES %s\\n" "$*"\n' > "$TMP/usr/games/steam"
 chmod +x "$TMP/usr/bin/steam" "$TMP/usr/games/steam"
 
-LS_SLSDIR="$HOME/.local/share/SLSsteam"
+LS_SLSDIR="$HOME/.local/share/SteamTools"
 LS_BACKUP_ROOT="$LS_SLSDIR/system-launcher-backup"
 LS_LAUNCHER_DIRS=("$TMP/usr/bin" "$TMP/usr/games")
 LS_STEAM_ROOT="$TMP/steam-root"
@@ -65,26 +65,26 @@ ls_install_shims
 check "reinstall does not capture the shim" "ORIG-BIN" \
   "$(sh "$(ls_backup_path "$TMP/usr/bin/steam")" | cut -d' ' -f1)"
 
-mv "$HOME/.local/share/SLSsteam/path/steam" "$TMP/wrapper-away"
+mv "$HOME/.local/share/SteamTools/path/steam" "$TMP/wrapper-away"
 check "missing wrapper falls through to original" "ORIG-BIN" \
   "$(sh "$TMP/usr/bin/steam" | cut -d' ' -f1)"
-mv "$TMP/wrapper-away" "$HOME/.local/share/SLSsteam/path/steam"
+mv "$TMP/wrapper-away" "$HOME/.local/share/SteamTools/path/steam"
 
 mv "$(ls_backup_path "$TMP/usr/bin/steam")" "$TMP/backup-away"
 mkdir -p "$HOME/.steam/steam"
 printf '#!/bin/sh\nprintf "STEAMSH %s\\n" "$*"\n' > "$HOME/.steam/steam/steam.sh"
 chmod +x "$HOME/.steam/steam/steam.sh"
-rm -f "$HOME/.local/share/SLSsteam/path/steam"
+rm -f "$HOME/.local/share/SteamTools/path/steam"
 check "missing wrapper and backup fall through to steam.sh" "STEAMSH" \
   "$(sh "$TMP/usr/bin/steam" | cut -d' ' -f1)"
 mv "$TMP/backup-away" "$(ls_backup_path "$TMP/usr/bin/steam")"
 
 # Restore through a fresh wrapper library state.
-cat > "$HOME/.local/share/SLSsteam/path/steam" <<'EOF'
+cat > "$HOME/.local/share/SteamTools/path/steam" <<'EOF'
 #!/bin/sh
 exit 0
 EOF
-chmod +x "$HOME/.local/share/SLSsteam/path/steam"
+chmod +x "$HOME/.local/share/SteamTools/path/steam"
 check "restore removes all shims" "yes" "$(ls_restore_shims && echo yes || echo no)"
 check "bin original is restored" "ORIG-BIN" "$(sh "$TMP/usr/bin/steam" | cut -d' ' -f1)"
 check "games original is restored" "ORIG-GAMES" "$(sh "$TMP/usr/games/steam" | cut -d' ' -f1)"
@@ -111,17 +111,17 @@ fi
 STUB_HOME="$TMP/stub-home"
 STUB_ROOT="$TMP/stub-steam-root"
 STUB_BIN="$TMP/stub-usr/games"
-mkdir -p "$STUB_HOME/.local/share/SLSsteam/path" "$STUB_ROOT" "$STUB_BIN"
-cat > "$STUB_HOME/.local/share/SLSsteam/path/steam" <<'EOF'
+mkdir -p "$STUB_HOME/.local/share/SteamTools/path" "$STUB_ROOT" "$STUB_BIN"
+cat > "$STUB_HOME/.local/share/SteamTools/path/steam" <<'EOF'
 #!/bin/sh
 printf 'WRAPPER-STUB bin=%s args=%s\n' "${SLSM_STEAM_BIN:-none}" "$*"
 EOF
-chmod +x "$STUB_HOME/.local/share/SLSsteam/path/steam"
+chmod +x "$STUB_HOME/.local/share/SteamTools/path/steam"
 printf '#!/bin/sh\nprintf "INSTALL-STUB %s\\n" "$*"\n' > "$STUB_BIN/steam"
 chmod +x "$STUB_BIN/steam"
 HOME="$STUB_HOME"
 export HOME
-LS_SLSDIR="$HOME/.local/share/SLSsteam"
+LS_SLSDIR="$HOME/.local/share/SteamTools"
 LS_BACKUP_ROOT="$LS_SLSDIR/system-launcher-backup"
 LS_LAUNCHER_DIRS=("$STUB_BIN")
 LS_STEAM_ROOT="$STUB_ROOT"
@@ -162,7 +162,7 @@ check "post-bootstrap shim passes real launcher to wrapper" \
 # A backup must never alias the injected wrapper, and generated shims must
 # reject an executable directory before trying to exec it as Steam.
 WRAPPER_ALIAS_BACKUP="$TMP/wrapper-alias-backup"
-ln -s "$STUB_HOME/.local/share/SLSsteam/path/steam" "$WRAPPER_ALIAS_BACKUP"
+ln -s "$STUB_HOME/.local/share/SteamTools/path/steam" "$WRAPPER_ALIAS_BACKUP"
 check "wrapper alias is not a usable launcher backup" "no" \
   "$(ls_backup_is_usable "$WRAPPER_ALIAS_BACKUP" && echo yes || echo no)"
 RUNTIME_HOME="$TMP/runtime-home"
@@ -202,14 +202,14 @@ check "normalized mirrored backup preserves its original" "NONEXEC-MIRROR" \
 # the wrapper before the canonical Steam symlink has been bootstrapped.
 LEGACY_HOME="$TMP/legacy-shim-home"
 LEGACY_BIN="$TMP/legacy-shim-usr/games"
-LEGACY_BACKUP="$LEGACY_HOME/.local/share/SLSsteam/system-launcher-backup/usr/games/steam.orig"
-mkdir -p "$LEGACY_HOME/.local/share/SLSsteam/path" "$LEGACY_BIN" \
+LEGACY_BACKUP="$LEGACY_HOME/.local/share/SteamTools/system-launcher-backup/usr/games/steam.orig"
+mkdir -p "$LEGACY_HOME/.local/share/SteamTools/path" "$LEGACY_BIN" \
   "$(dirname "$LEGACY_BACKUP")"
-cat > "$LEGACY_HOME/.local/share/SLSsteam/path/steam" <<'EOF'
+cat > "$LEGACY_HOME/.local/share/SteamTools/path/steam" <<'EOF'
 #!/bin/sh
 printf 'WRAPPER-LEGACY bin=%s args=%s\n' "${SLSM_STEAM_BIN:-none}" "$*"
 EOF
-chmod +x "$LEGACY_HOME/.local/share/SLSsteam/path/steam"
+chmod +x "$LEGACY_HOME/.local/share/SteamTools/path/steam"
 printf '#!/bin/sh\nprintf "LEGACY-INSTALL-STUB %s\\n" "$*"\n' > "$LEGACY_BACKUP"
 chmod +x "$LEGACY_BACKUP"
 ls_shim_content "$LEGACY_BACKUP" > "$LEGACY_BIN/steam"
@@ -233,15 +233,15 @@ check "existing shim heals its missing exec alias in place" "$LEGACY_BACKUP" \
 # original, whether the wrapper is available or not.
 MANAGED_HOME="$TMP/managed-backup-home"
 MANAGED_BIN="$TMP/managed-backup-bin"
-MANAGED_BACKUP="$MANAGED_HOME/.local/share/SLSsteam/system-launcher-backup/usr/games/steam.orig"
-mkdir -p "$MANAGED_HOME/.local/share/SLSsteam/path" "$MANAGED_BIN" \
+MANAGED_BACKUP="$MANAGED_HOME/.local/share/SteamTools/system-launcher-backup/usr/games/steam.orig"
+mkdir -p "$MANAGED_HOME/.local/share/SteamTools/path" "$MANAGED_BIN" \
   "$(dirname "$MANAGED_BACKUP")" "$MANAGED_HOME/.steam"
-cat > "$MANAGED_HOME/.local/share/SLSsteam/path/steam" <<'EOF'
+cat > "$MANAGED_HOME/.local/share/SteamTools/path/steam" <<'EOF'
 #!/bin/sh
 printf 'WRAPPER-MANAGED bin=%s args=%s\n' "${SLSM_STEAM_BIN:-none}" "$*"
 EOF
-chmod +x "$MANAGED_HOME/.local/share/SLSsteam/path/steam"
-printf '#!/bin/sh\n# slsteam-moon system launcher shim\nprintf "MANAGED-BACKUP\\n"\n' > "$MANAGED_BACKUP"
+chmod +x "$MANAGED_HOME/.local/share/SteamTools/path/steam"
+printf '#!/bin/sh\n# steamtools-moon system launcher shim\nprintf "MANAGED-BACKUP\\n"\n' > "$MANAGED_BACKUP"
 chmod +x "$MANAGED_BACKUP"
 ln -s "$STUB_ROOT" "$MANAGED_HOME/.steam/steam"
 ls_shim_content "$MANAGED_BACKUP" > "$MANAGED_BIN/steam"
@@ -249,7 +249,7 @@ chmod +x "$MANAGED_BIN/steam"
 check "shim rejects managed backup before wrapper export" \
   "WRAPPER-MANAGED bin=none args=-silent" \
   "$(HOME="$MANAGED_HOME" sh "$MANAGED_BIN/steam" -silent)"
-mv "$MANAGED_HOME/.local/share/SLSsteam/path/steam" "$TMP/managed-wrapper-away"
+mv "$MANAGED_HOME/.local/share/SteamTools/path/steam" "$TMP/managed-wrapper-away"
 check "shim does not execute managed backup directly" "BOOTSTRAPPED-STEAMSH" \
   "$(HOME="$MANAGED_HOME" sh "$MANAGED_BIN/steam" | cut -d' ' -f1)"
 
@@ -325,9 +325,9 @@ check "partial install leaves the failed launcher vanilla" "no" \
 BAD_BACKUP_ROOT="$TMP/tagged-backup"
 BAD_STEAM_ROOT="$BAD_BACKUP_ROOT/steam-root"
 mkdir -p "$BAD_BACKUP_ROOT/usr/bin" "$BAD_BACKUP_ROOT/backup/usr/bin" "$BAD_STEAM_ROOT"
-printf '#!/bin/sh\n# slsteam-moon system launcher shim\nexec /broken/tagged\n' \
+printf '#!/bin/sh\n# steamtools-moon system launcher shim\nexec /broken/tagged\n' \
   > "$BAD_BACKUP_ROOT/usr/bin/steam"
-printf '#!/bin/sh\n# slsteam-moon system launcher shim\nexec /broken/original\n' \
+printf '#!/bin/sh\n# steamtools-moon system launcher shim\nexec /broken/original\n' \
   > "$BAD_BACKUP_ROOT/backup/usr/bin/steam.orig"
 printf '#!/bin/sh\nexit 0\n' > "$BAD_STEAM_ROOT/steam.sh"
 chmod 0755 "$BAD_BACKUP_ROOT/usr/bin/steam" \
@@ -347,7 +347,7 @@ STALE_STEAM_ROOT="$STALE_ROOT/steam-root"
 mkdir -p "$STALE_ROOT/usr/bin" "$STALE_ROOT/usr/games" \
   "$STALE_ROOT/backup/${STALE_ROOT#/}/usr/games" "$STALE_STEAM_ROOT"
 printf '#!/bin/sh\nprintf "FRESH-BIN\\n"\n' > "$STALE_ROOT/usr/bin/steam"
-printf '#!/bin/sh\n# slsteam-moon system launcher shim\nSLSM_ORIG="%s"\nexec /broken/stale-games\n' \
+printf '#!/bin/sh\n# steamtools-moon system launcher shim\nSLSM_ORIG="%s"\nexec /broken/stale-games\n' \
   "$STALE_ROOT/backup/${STALE_ROOT#/}/usr/games/steam.orig" \
   > "$STALE_ROOT/usr/games/steam"
 printf '#!/bin/sh\nprintf "MIRRORED-GAMES\\n"\n' > \
@@ -369,8 +369,8 @@ check "stale flat backup remains available" "yes" \
 # retain both shims rather than applying one original to both paths.
 FLAT_ROOT="$TMP/flat-ambiguous"
 mkdir -p "$FLAT_ROOT/bin" "$FLAT_ROOT/games" "$FLAT_ROOT/backup"
-printf '#!/bin/sh\n# slsteam-moon system launcher shim\nexec /broken/bin\n' > "$FLAT_ROOT/bin/steam"
-printf '#!/bin/sh\n# slsteam-moon system launcher shim\nexec /broken/games\n' > "$FLAT_ROOT/games/steam"
+printf '#!/bin/sh\n# steamtools-moon system launcher shim\nexec /broken/bin\n' > "$FLAT_ROOT/bin/steam"
+printf '#!/bin/sh\n# steamtools-moon system launcher shim\nexec /broken/games\n' > "$FLAT_ROOT/games/steam"
 printf '#!/bin/sh\nprintf FLAT-ORIGINAL\n' > "$FLAT_ROOT/backup/steam.orig"
 chmod 0755 "$FLAT_ROOT/bin/steam" "$FLAT_ROOT/games/steam" "$FLAT_ROOT/backup/steam.orig"
 LS_LAUNCHER_DIRS=("$FLAT_ROOT/bin" "$FLAT_ROOT/games")
@@ -388,7 +388,7 @@ MIG_ROOT="$TMP/flat-reinstall"
 MIG_STEAM_ROOT="$MIG_ROOT/steam-root"
 mkdir -p "$MIG_ROOT/usr/bin" "$MIG_ROOT/usr/games" "$MIG_ROOT/backup" "$MIG_STEAM_ROOT"
 printf '#!/bin/sh\nprintf "FRESH-BIN\\n"\n' > "$MIG_ROOT/usr/bin/steam"
-printf '#!/bin/sh\n# slsteam-moon system launcher shim\nexec "%s/steam.orig" "$@"\n' \
+printf '#!/bin/sh\n# steamtools-moon system launcher shim\nexec "%s/steam.orig" "$@"\n' \
   "$MIG_ROOT/backup" > "$MIG_ROOT/usr/games/steam"
 printf '#!/bin/sh\nprintf "LEGACY-GAMES\\n"\n' > "$MIG_ROOT/backup/steam.orig"
 printf '#!/bin/sh\nexit 0\n' > "$MIG_STEAM_ROOT/steam.sh"
@@ -420,9 +420,9 @@ MIX_REINSTALL_FLAT="$MIX_REINSTALL_BACKUP/steam.orig"
 mkdir -p "$(dirname "$MIX_REINSTALL_MIRRORED")"
 printf '#!/bin/sh\nprintf "MIX-REINSTALL-BIN\\n"\n' > "$MIX_REINSTALL_MIRRORED"
 printf '#!/bin/sh\nprintf "MIX-REINSTALL-GAMES\\n"\n' > "$MIX_REINSTALL_FLAT"
-printf '#!/bin/sh\n# slsteam-moon system launcher shim\nSLSM_ORIG="%s"\nexec /broken/mixed-bin\n' \
+printf '#!/bin/sh\n# steamtools-moon system launcher shim\nSLSM_ORIG="%s"\nexec /broken/mixed-bin\n' \
   "$MIX_REINSTALL_MIRRORED" > "$MIX_REINSTALL_BIN/steam"
-printf '#!/bin/sh\n# slsteam-moon system launcher shim\nSLSM_ORIG="%s"\nexec /broken/mixed-games\n' \
+printf '#!/bin/sh\n# steamtools-moon system launcher shim\nSLSM_ORIG="%s"\nexec /broken/mixed-games\n' \
   "$MIX_REINSTALL_FLAT" > "$MIX_REINSTALL_GAMES/steam"
 printf '#!/bin/sh\nexit 0\n' > "$MIX_REINSTALL_STEAM_ROOT/steam.sh"
 chmod 0755 "$MIX_REINSTALL_BIN/steam" "$MIX_REINSTALL_GAMES/steam" \
@@ -474,9 +474,9 @@ unset SLS_PRIV_LOG
 MIX_ROOT="$TMP/mixed-restore"
 mkdir -p "$MIX_ROOT/usr/bin" "$MIX_ROOT/usr/games" \
   "$MIX_ROOT/backup" "$MIX_ROOT/backup/${MIX_ROOT#/}/usr/games"
-printf '#!/bin/sh\n# slsteam-moon system launcher shim\nSLSM_ORIG="%s/steam.orig"\nexec /broken/bin\n' \
+printf '#!/bin/sh\n# steamtools-moon system launcher shim\nSLSM_ORIG="%s/steam.orig"\nexec /broken/bin\n' \
   "$MIX_ROOT/backup" > "$MIX_ROOT/usr/bin/steam"
-printf '#!/bin/sh\n# slsteam-moon system launcher shim\nSLSM_ORIG="%s%s/usr/games/steam.orig"\nexec /broken/games\n' \
+printf '#!/bin/sh\n# steamtools-moon system launcher shim\nSLSM_ORIG="%s%s/usr/games/steam.orig"\nexec /broken/games\n' \
   "$MIX_ROOT/backup" "$MIX_ROOT" > "$MIX_ROOT/usr/games/steam"
 printf '#!/bin/sh\nprintf "MIXED-BIN\\n"\n' > "$MIX_ROOT/backup/steam.orig"
 printf '#!/bin/sh\nprintf "MIXED-GAMES\\n"\n' > \
@@ -498,9 +498,9 @@ check "mixed restore recovers the mirrored launcher" "MIXED-GAMES" \
 MIX_UNRES_ROOT="$TMP/mixed-unresolved-restore"
 mkdir -p "$MIX_UNRES_ROOT/usr/bin" "$MIX_UNRES_ROOT/usr/games" \
   "$MIX_UNRES_ROOT/backup"
-printf '#!/bin/sh\n# slsteam-moon system launcher shim\nSLSM_ORIG="%s/steam.orig"\nexec /broken/unresolved-bin\n' \
+printf '#!/bin/sh\n# steamtools-moon system launcher shim\nSLSM_ORIG="%s/steam.orig"\nexec /broken/unresolved-bin\n' \
   "$MIX_UNRES_ROOT/backup" > "$MIX_UNRES_ROOT/usr/bin/steam"
-printf '#!/bin/sh\n# slsteam-moon system launcher shim\nSLSM_ORIG="%s%s/usr/games/steam.orig"\nexec /broken/unresolved-games\n' \
+printf '#!/bin/sh\n# steamtools-moon system launcher shim\nSLSM_ORIG="%s%s/usr/games/steam.orig"\nexec /broken/unresolved-games\n' \
   "$MIX_UNRES_ROOT/backup" "$MIX_UNRES_ROOT" > "$MIX_UNRES_ROOT/usr/games/steam"
 printf '#!/bin/sh\nprintf "MIX-UNRES-BIN\\n"\n' > "$MIX_UNRES_ROOT/backup/steam.orig"
 chmod 0755 "$MIX_UNRES_ROOT/usr/bin/steam" \
@@ -528,9 +528,9 @@ LS_STEAM_ROOT="$REVERSE_INSTALL_STEAM_ROOT"
 REVERSE_INSTALL_UNRES_MIRRORED="$(ls_backup_path "$REVERSE_INSTALL_UNRES/steam")"
 REVERSE_INSTALL_FLAT="$REVERSE_INSTALL_BACKUP/steam.orig"
 mkdir -p "$(dirname "$REVERSE_INSTALL_UNRES_MIRRORED")"
-printf '#!/bin/sh\n# slsteam-moon system launcher shim\nSLSM_ORIG="%s"\nexec /broken/reverse-unresolved\n' \
+printf '#!/bin/sh\n# steamtools-moon system launcher shim\nSLSM_ORIG="%s"\nexec /broken/reverse-unresolved\n' \
   "$REVERSE_INSTALL_UNRES_MIRRORED" > "$REVERSE_INSTALL_UNRES/steam"
-printf '#!/bin/sh\n# slsteam-moon system launcher shim\nSLSM_ORIG="%s"\nexec /broken/reverse-owner\n' \
+printf '#!/bin/sh\n# steamtools-moon system launcher shim\nSLSM_ORIG="%s"\nexec /broken/reverse-owner\n' \
   "$REVERSE_INSTALL_FLAT" > "$REVERSE_INSTALL_OWNER/steam"
 printf '#!/bin/sh\nprintf "REVERSE-INSTALL-OWNER\\n"\n' > "$REVERSE_INSTALL_FLAT"
 printf '#!/bin/sh\nexit 0\n' > "$REVERSE_INSTALL_STEAM_ROOT/steam.sh"
@@ -553,9 +553,9 @@ LS_BACKUP_ROOT="$REVERSE_RESTORE_BACKUP"
 REVERSE_RESTORE_UNRES_MIRRORED="$(ls_backup_path "$REVERSE_RESTORE_UNRES/steam")"
 REVERSE_RESTORE_FLAT="$REVERSE_RESTORE_BACKUP/steam.orig"
 mkdir -p "$(dirname "$REVERSE_RESTORE_UNRES_MIRRORED")"
-printf '#!/bin/sh\n# slsteam-moon system launcher shim\nSLSM_ORIG="%s"\nexec /broken/reverse-restore-unresolved\n' \
+printf '#!/bin/sh\n# steamtools-moon system launcher shim\nSLSM_ORIG="%s"\nexec /broken/reverse-restore-unresolved\n' \
   "$REVERSE_RESTORE_UNRES_MIRRORED" > "$REVERSE_RESTORE_UNRES/steam"
-printf '#!/bin/sh\n# slsteam-moon system launcher shim\nSLSM_ORIG="%s"\nexec /broken/reverse-restore-owner\n' \
+printf '#!/bin/sh\n# steamtools-moon system launcher shim\nSLSM_ORIG="%s"\nexec /broken/reverse-restore-owner\n' \
   "$REVERSE_RESTORE_FLAT" > "$REVERSE_RESTORE_OWNER/steam"
 printf '#!/bin/sh\nprintf "REVERSE-RESTORE-OWNER\\n"\n' > "$REVERSE_RESTORE_FLAT"
 chmod 0755 "$REVERSE_RESTORE_UNRES/steam" "$REVERSE_RESTORE_OWNER/steam" \
@@ -572,9 +572,9 @@ check "reverse restore recovers the later exact owner" "REVERSE-RESTORE-OWNER" \
 INVALID_ROOT="$TMP/invalid-mirrored-restore"
 mkdir -p "$INVALID_ROOT/usr/bin" "$INVALID_ROOT/backup" \
   "$INVALID_ROOT/backup/${INVALID_ROOT#/}/usr/bin"
-printf '#!/bin/sh\n# slsteam-moon system launcher shim\nSLSM_ORIG="%s/steam.orig"\nexec /broken/invalid-mirror\n' \
+printf '#!/bin/sh\n# steamtools-moon system launcher shim\nSLSM_ORIG="%s/steam.orig"\nexec /broken/invalid-mirror\n' \
   "$INVALID_ROOT/backup" > "$INVALID_ROOT/usr/bin/steam"
-printf '#!/bin/sh\n# slsteam-moon system launcher shim\nexec /broken/captured\n' \
+printf '#!/bin/sh\n# steamtools-moon system launcher shim\nexec /broken/captured\n' \
   > "$INVALID_ROOT/backup/${INVALID_ROOT#/}/usr/bin/steam.orig"
 printf '#!/bin/sh\nprintf "INVALID-FLAT\\n"\n' > "$INVALID_ROOT/backup/steam.orig"
 chmod 0755 "$INVALID_ROOT/usr/bin/steam" \
@@ -595,7 +595,7 @@ ASSOCIATION_LAUNCHER="$ASSOCIATION_ROOT/usr/bin/steam"
 ASSOCIATION_MIRROR="$ASSOCIATION_BACKUP/${ASSOCIATION_LAUNCHER#/}.orig"
 mkdir -p "$(dirname "$ASSOCIATION_LAUNCHER")" \
   "$(dirname "$ASSOCIATION_MIRROR")" "$ASSOCIATION_ROOT/steam-root"
-printf '#!/bin/sh\n# slsteam-moon system launcher shim\nSLSM_ORIG="%s/steam.orig"\nexec /broken/association\n' \
+printf '#!/bin/sh\n# steamtools-moon system launcher shim\nSLSM_ORIG="%s/steam.orig"\nexec /broken/association\n' \
   "$ASSOCIATION_BACKUP" > "$ASSOCIATION_LAUNCHER"
 printf '#!/bin/sh\nprintf "STALE-ASSOCIATION-MIRROR\\n"\n' > "$ASSOCIATION_MIRROR"
 printf '#!/bin/sh\nexit 0\n' > "$ASSOCIATION_ROOT/steam-root/steam.sh"
@@ -622,7 +622,7 @@ CONFLICT_MIRROR="$CONFLICT_BACKUP/${CONFLICT_LAUNCHER#/}.orig"
 CONFLICT_LEGACY="$CONFLICT_BACKUP/steam.orig"
 mkdir -p "$(dirname "$CONFLICT_LAUNCHER")" \
   "$(dirname "$CONFLICT_MIRROR")" "$CONFLICT_ROOT/steam-root"
-printf '#!/bin/sh\n# slsteam-moon system launcher shim\nSLSM_ORIG="%s"\nexec /broken/association-conflict\n' \
+printf '#!/bin/sh\n# steamtools-moon system launcher shim\nSLSM_ORIG="%s"\nexec /broken/association-conflict\n' \
   "$CONFLICT_LEGACY" > "$CONFLICT_LAUNCHER"
 printf '#!/bin/sh\nprintf "LEGACY-ASSOCIATION-CONFLICT\\n"\n' > "$CONFLICT_LEGACY"
 printf '#!/bin/sh\nprintf "STALE-ASSOCIATION-CONFLICT\\n"\n' > "$CONFLICT_MIRROR"

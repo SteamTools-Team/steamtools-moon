@@ -1,6 +1,6 @@
 // Standalone test for the desktop-notification command builder.
 //
-// Bug: every SLSsteam notify-send popup EXCEPT the
+// Bug: every SteamTools notify-send popup EXCEPT the
 // "Loaded successfully" (NotifyShort) one stays on screen forever.  Root
 // cause: the Warn branch emitted `notify-send -u "critical"` with NO `-t`.
 // Per the freedesktop spec, urgency=critical notifications are "resident"
@@ -156,11 +156,11 @@ int main()
 	//    level-based builder.
 	{
 		const std::string cmd =
-			Notify::buildCommandRaw("SLSsteam-moon", "servers busy", 30000, "normal");
+			Notify::buildCommandRaw("SteamTools-moon", "servers busy", 30000, "normal");
 		CHECK(contains(cmd, "notify-send"),  "raw cmd invokes notify-send");
 		CHECK(contains(cmd, "-t 30000"),     "raw cmd carries the given timeout");
 		CHECK(contains(cmd, "-u \"normal\""),"raw cmd carries the given urgency");
-		CHECK(contains(cmd, "SLSsteam-moon"),"raw cmd carries the title");
+		CHECK(contains(cmd, "SteamTools-moon"),"raw cmd carries the title");
 		CHECK(contains(cmd, "servers busy"), "raw cmd carries the body");
 
 		const std::string inj =
@@ -210,7 +210,7 @@ int main()
 	//     render the message inside Steam itself.
 	{
 		const std::string payload = Notify::buildGamepadPayload(
-			"SLSsteam-moon", "quoted \"body\"\nsecond line", 30000, 123456789);
+			"SteamTools-moon", "quoted \"body\"\nsecond line", 30000, 123456789);
 		CHECK(contains(payload, "\"version\":1"),
 		      "gamepad payload carries its schema version");
 		CHECK(contains(payload, "\"created_ms\":123456789"),
@@ -224,7 +224,7 @@ int main()
 			("sls-notify-test-" + std::to_string(Notify::processId()));
 		std::error_code ec;
 		std::filesystem::remove_all(base, ec);
-		CHECK(Notify::enqueueGamepadEvent(base.string(), "SLSsteam-moon",
+		CHECK(Notify::enqueueGamepadEvent(base.string(), "SteamTools-moon",
 		      "ready", 10000, 123456790),
 		      "gamepad event is queued atomically");
 

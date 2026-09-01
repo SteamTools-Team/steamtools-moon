@@ -99,7 +99,7 @@ int main()
 	          && policyReady < setupLock,
 	      "narrow audit policy is published before a secondary namespace can skip setup");
 
-	char logPath[] = "/tmp/slssteam-audit-log-XXXXXX";
+	char logPath[] = "/tmp/steamtools-audit-log-XXXXXX";
 	int logFd = mkstemp(logPath);
 	check(logFd >= 0, "temporary raw audit log can be created");
 	if (logFd >= 0)

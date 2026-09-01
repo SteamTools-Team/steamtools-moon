@@ -177,7 +177,7 @@ AppInfoProvision::NetworkFailure httpsGet(const std::string& url,
 	p_setopt(c, CURLOPT_TIMEOUT_MS, timeoutMs);
 	p_setopt(c, CURLOPT_CONNECTTIMEOUT_MS, std::min(timeoutMs, 5000L));
 	p_setopt(c, CURLOPT_NOSIGNAL, 1L);
-	p_setopt(c, CURLOPT_USERAGENT, "SLSsteam-CmClient/0.1");
+	p_setopt(c, CURLOPT_USERAGENT, "SteamTools-CmClient/0.1");
 	// Pin the system trust store (see cainfo.hpp): without it the libcurl
 	// Steam loads fails CA verification on SteamOS/Arch and this GET returns
 	// nothing -> "empty CM list". No-op when no bundle is found.
@@ -235,10 +235,10 @@ std::string cmListCachePath()
 // Freshness window for the CM-list cache (seconds).  The list is stable
 // bootstrap infra, so a long TTL is safe; a stale entry self-heals
 // because CmClient re-fetches when every cached endpoint fails to
-// connect.  Override via SLSSTEAM_CMLIST_TTL (0 disables).
+// connect.  Override via STEAMTOOLS_CMLIST_TTL (0 disables).
 long long cmListTtlSecs()
 {
-	if (const char* ov = std::getenv("SLSSTEAM_CMLIST_TTL"); ov && *ov)
+	if (const char* ov = std::getenv("STEAMTOOLS_CMLIST_TTL"); ov && *ov)
 	{
 		try { return std::stoll(ov); } catch (...) {}
 	}
@@ -316,7 +316,7 @@ std::vector<Endpoint> fetchCmList(AppInfoProvision::NetworkFailure& failure,
 
 bool gzipInflate(const std::string& in, uint32_t expected, std::string& out)
 {
-	char tmpIn[] = "/tmp/slsteam_cm_gz_XXXXXX";
+	char tmpIn[] = "/tmp/steamtools_cm_gz_XXXXXX";
 	int fd = mkstemp(tmpIn);
 	if (fd < 0) return false;
 	const ssize_t w = write(fd, in.data(), in.size());

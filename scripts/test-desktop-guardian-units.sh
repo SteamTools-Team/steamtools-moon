@@ -29,7 +29,7 @@ check "unit library sources coverage desktop helper" "yes" "$(type dc_desktop_di
 
 service="$(dgu_service_content)"
 contains "service has oneshot section" "$service" $'[Service]\nType=oneshot'
-contains "service invokes guardian safely" "$service" 'ExecStart=%h/.local/share/SLSsteam/ensure-desktop-coverage.sh --guardian'
+contains "service invokes guardian safely" "$service" 'ExecStart=%h/.local/share/SteamTools/ensure-desktop-coverage.sh --guardian'
 # The wrapper kicks this service while Steam is starting, so a pass that does
 # have work to do must never compete with the client for CPU or IO.
 contains "service runs at reduced priority" "$service" $'\nNice=10'
@@ -64,7 +64,7 @@ contains "path unit includes readable system autostart" "$path_unit" "PathChange
 check "path unit skips unavailable system directory" "0" "$(printf '%s\n' "$path_unit" | grep -cF "PathChanged=$MISSING")"
 check "path unit deduplicates applications" "1" "$(printf '%s\n' "$path_unit" | grep -cF "PathChanged=$SYS_APPS")"
 check "path unit deduplicates autostart" "1" "$(printf '%s\n' "$path_unit" | grep -cF "PathChanged=$SYS_AUTOSTART")"
-contains "path unit targets guardian service" "$path_unit" 'Unit=slsteam-desktop-guardian.service'
+contains "path unit targets guardian service" "$path_unit" 'Unit=steamtools-desktop-guardian.service'
 
 FAKE_BIN="$TMP/fake commands"
 mkdir -p "$FAKE_BIN"
@@ -81,7 +81,7 @@ cat > "$FAKE_BIN/fake systemctl" <<'FAKE'
 } >> "$DGU_CALLS"
 case " $* " in
   *" disable "*)
-    if [ -f "$DGU_UNIT_DIR/slsteam-desktop-guardian.service" ]; then
+    if [ -f "$DGU_UNIT_DIR/steamtools-desktop-guardian.service" ]; then
       printf 'files-present\n' >> "$DGU_ORDER_LOG"
     else
       printf 'files-missing\n' >> "$DGU_ORDER_LOG"
@@ -116,38 +116,38 @@ export PATH
 
 dgu_install_units
 check "first install reports changed" "0" "$?"
-check "service installed under override" "yes" "$([ -f "$DGU_UNIT_DIR/slsteam-desktop-guardian.service" ] && echo yes || echo no)"
+check "service installed under override" "yes" "$([ -f "$DGU_UNIT_DIR/steamtools-desktop-guardian.service" ] && echo yes || echo no)"
 check "service carries project ownership sentinel" "1" \
-  "$(grep -cFx "$DGU_UNIT_SENTINEL" "$DGU_UNIT_DIR/slsteam-desktop-guardian.service" 2>/dev/null || true)"
-check "path installed under override" "yes" "$([ -f "$DGU_UNIT_DIR/slsteam-desktop-guardian.path" ] && echo yes || echo no)"
-check "timer installed under override" "yes" "$([ -f "$DGU_UNIT_DIR/slsteam-desktop-guardian.timer" ] && echo yes || echo no)"
-check "installed service matches renderer" "$service" "$(cat "$DGU_UNIT_DIR/slsteam-desktop-guardian.service")"
-check "installed path matches renderer" "$path_unit" "$(cat "$DGU_UNIT_DIR/slsteam-desktop-guardian.path")"
-check "installed timer matches renderer" "$timer" "$(cat "$DGU_UNIT_DIR/slsteam-desktop-guardian.timer")"
+  "$(grep -cFx "$DGU_UNIT_SENTINEL" "$DGU_UNIT_DIR/steamtools-desktop-guardian.service" 2>/dev/null || true)"
+check "path installed under override" "yes" "$([ -f "$DGU_UNIT_DIR/steamtools-desktop-guardian.path" ] && echo yes || echo no)"
+check "timer installed under override" "yes" "$([ -f "$DGU_UNIT_DIR/steamtools-desktop-guardian.timer" ] && echo yes || echo no)"
+check "installed service matches renderer" "$service" "$(cat "$DGU_UNIT_DIR/steamtools-desktop-guardian.service")"
+check "installed path matches renderer" "$path_unit" "$(cat "$DGU_UNIT_DIR/steamtools-desktop-guardian.path")"
+check "installed timer matches renderer" "$timer" "$(cat "$DGU_UNIT_DIR/steamtools-desktop-guardian.timer")"
 check "changed install makes three manager calls" "3" "$(wc -l < "$DGU_CALLS")"
 check "daemon reload arguments stay separate" $'CALL\t<--user>\t<daemon-reload>' "$(sed -n '1p' "$DGU_CALLS")"
-check "enable arguments stay separate" $'CALL\t<--user>\t<enable>\t<--now>\t<slsteam-desktop-guardian.path>\t<slsteam-desktop-guardian.timer>' "$(sed -n '2p' "$DGU_CALLS")"
-check "start arguments stay separate" $'CALL\t<--user>\t<start>\t<slsteam-desktop-guardian.service>' "$(sed -n '3p' "$DGU_CALLS")"
+check "enable arguments stay separate" $'CALL\t<--user>\t<enable>\t<--now>\t<steamtools-desktop-guardian.path>\t<steamtools-desktop-guardian.timer>' "$(sed -n '2p' "$DGU_CALLS")"
+check "start arguments stay separate" $'CALL\t<--user>\t<start>\t<steamtools-desktop-guardian.service>' "$(sed -n '3p' "$DGU_CALLS")"
 atomic="$(awk -v d="$DGU_UNIT_DIR/" 'NR % 2 == 1 && index($0, d) != 1 { bad=1 } END { print bad ? "no" : "yes" }' "$DGU_MV_LOG")"
 check "atomic temp files are created in destination directory" "yes" "$atomic"
 check "atomic install leaves no temporary files" "0" "$(compgen -G "$DGU_UNIT_DIR/.*.tmp.*" | wc -l)"
 
-service_inode="$(stat -c '%i' "$DGU_UNIT_DIR/slsteam-desktop-guardian.service")"
+service_inode="$(stat -c '%i' "$DGU_UNIT_DIR/steamtools-desktop-guardian.service")"
 : > "$DGU_CALLS"; : > "$DGU_MV_LOG"
 dgu_install_units
 check "unchanged install reports no reload needed" "1" "$?"
-check "unchanged install preserves inode" "$service_inode" "$(stat -c '%i' "$DGU_UNIT_DIR/slsteam-desktop-guardian.service")"
+check "unchanged install preserves inode" "$service_inode" "$(stat -c '%i' "$DGU_UNIT_DIR/steamtools-desktop-guardian.service")"
 check "unchanged install performs no replacement" "0" "$(wc -l < "$DGU_MV_LOG")"
 check "unchanged install performs no manager calls" "0" "$(wc -l < "$DGU_CALLS")"
 
-printf '%s\nstale\n' "$DGU_UNIT_SENTINEL" > "$DGU_UNIT_DIR/slsteam-desktop-guardian.timer"
+printf '%s\nstale\n' "$DGU_UNIT_SENTINEL" > "$DGU_UNIT_DIR/steamtools-desktop-guardian.timer"
 : > "$DGU_CALLS"; : > "$DGU_MV_LOG"
 dgu_install_units
 check "repair reports changed" "0" "$?"
-check "repair restores timer content" "$timer" "$(cat "$DGU_UNIT_DIR/slsteam-desktop-guardian.timer")"
+check "repair restores timer content" "$timer" "$(cat "$DGU_UNIT_DIR/steamtools-desktop-guardian.timer")"
 check "repair alone reloads and enables units" "3" "$(wc -l < "$DGU_CALLS")"
 
-printf '%s\nstale again\n' "$DGU_UNIT_SENTINEL" > "$DGU_UNIT_DIR/slsteam-desktop-guardian.timer"
+printf '%s\nstale again\n' "$DGU_UNIT_SENTINEL" > "$DGU_UNIT_DIR/steamtools-desktop-guardian.timer"
 : > "$DGU_CALLS"; : > "$DGU_MV_LOG"
 if bash -e -c '. "$1"; dgu_install_units' _ "$HERE/tools/desktop-guardian-units.lib.sh"; then
 	errexit_status=0
@@ -155,7 +155,7 @@ else
 	errexit_status=$?
 fi
 check "mixed-state repair is safe for errexit callers" "0" "$errexit_status"
-check "errexit repair restores later stale unit" "$timer" "$(cat "$DGU_UNIT_DIR/slsteam-desktop-guardian.timer")"
+check "errexit repair restores later stale unit" "$timer" "$(cat "$DGU_UNIT_DIR/steamtools-desktop-guardian.timer")"
 check "errexit repair still notifies manager" "3" "$(wc -l < "$DGU_CALLS")"
 
 : > "$DGU_CALLS"
@@ -168,16 +168,16 @@ contains "manager failure is logged" "$(cat "$TMP/enable.stderr")" 'daemon-reloa
 DGU_NO_SERVICE_START=1 dgu_enable_units
 check "runtime unit refresh skips recursive service start" "2" "$(wc -l < "$DGU_CALLS")"
 check "runtime unit refresh still enables path and timer" "1" \
-  "$(grep -c $'CALL\t<--user>\t<enable>\t<--now>\t<slsteam-desktop-guardian.path>\t<slsteam-desktop-guardian.timer>' "$DGU_CALLS" 2>/dev/null || true)"
+  "$(grep -c $'CALL\t<--user>\t<enable>\t<--now>\t<steamtools-desktop-guardian.path>\t<steamtools-desktop-guardian.timer>' "$DGU_CALLS" 2>/dev/null || true)"
 check "runtime unit refresh never starts its current service" "0" \
-  "$(grep -c $'CALL\t<--user>\t<start>\t<slsteam-desktop-guardian.service>' "$DGU_CALLS" 2>/dev/null || true)"
+  "$(grep -c $'CALL\t<--user>\t<start>\t<steamtools-desktop-guardian.service>' "$DGU_CALLS" 2>/dev/null || true)"
 
 : > "$DGU_CALLS"; : > "$DGU_ORDER_LOG"
 dgu_remove_units
 check "remove reports changed" "0" "$?"
 check "remove disables units before deleting files" "files-present" "$(head -n 1 "$DGU_ORDER_LOG")"
-check "remove deletes all three units" "0" "$(for f in service path timer; do [ -e "$DGU_UNIT_DIR/slsteam-desktop-guardian.$f" ] && printf x; done | wc -c)"
-check "remove disables path and timer" $'CALL\t<--user>\t<disable>\t<--now>\t<slsteam-desktop-guardian.path>\t<slsteam-desktop-guardian.timer>' "$(sed -n '1p' "$DGU_CALLS")"
+check "remove deletes all three units" "0" "$(for f in service path timer; do [ -e "$DGU_UNIT_DIR/steamtools-desktop-guardian.$f" ] && printf x; done | wc -c)"
+check "remove disables path and timer" $'CALL\t<--user>\t<disable>\t<--now>\t<steamtools-desktop-guardian.path>\t<steamtools-desktop-guardian.timer>' "$(sed -n '1p' "$DGU_CALLS")"
 check "remove reloads manager" $'CALL\t<--user>\t<daemon-reload>' "$(sed -n '2p' "$DGU_CALLS")"
 
 : > "$DGU_CALLS"
@@ -220,7 +220,7 @@ dc_application_dirs() { return 7; }
 : > "$DGU_CALLS"
 dgu_install_units
 check "renderer failure reports error" "2" "$?"
-check "renderer failure publishes no units" "0" "$(for f in service path timer; do [ -e "$DGU_UNIT_DIR/slsteam-desktop-guardian.$f" ] && printf x; done | wc -c)"
+check "renderer failure publishes no units" "0" "$(for f in service path timer; do [ -e "$DGU_UNIT_DIR/steamtools-desktop-guardian.$f" ] && printf x; done | wc -c)"
 check "renderer failure performs no manager calls" "0" "$(wc -l < "$DGU_CALLS")"
 
 # Generated XDG-autostart drop-ins close the generator race while preserving
@@ -260,8 +260,8 @@ cp "$TMP/autostart-bazzite.desktop" "$AUTO_SYSTEM/com.valvesoftware.Steam.deskto
 rm -rf -- "$DGU_UNIT_DIR"; mkdir -p "$DGU_UNIT_DIR"; : > "$DGU_CALLS"
 dgu_install_autostart_dropins
 check "drop-in install reports changed" "0" "$?"
-STEAM_DROPIN="$DGU_UNIT_DIR/app-steam@autostart.service.d/slsteam-guardian.conf"
-COM_DROPIN="$DGU_UNIT_DIR/app-com.valvesoftware.Steam@autostart.service.d/slsteam-guardian.conf"
+STEAM_DROPIN="$DGU_UNIT_DIR/app-steam@autostart.service.d/steamtools-guardian.conf"
+COM_DROPIN="$DGU_UNIT_DIR/app-com.valvesoftware.Steam@autostart.service.d/steamtools-guardian.conf"
 check "steam drop-in is created for existing user autostart" "yes" \
   "$([ -f "$STEAM_DROPIN" ] && echo yes || echo no)"
 check "system donor gets same-ID generated drop-in" "yes" \
@@ -290,7 +290,7 @@ EMPTY_UNITS="$TMP/Empty Units"; mkdir -p "$EMPTY_UNITS"; DGU_UNIT_DIR="$EMPTY_UN
 dgu_install_autostart_dropins
 check "no autostart source creates no drop-in" "0" \
   "$(find "$EMPTY_UNITS" -type f | wc -l)"
-FOREIGN="$EMPTY_UNITS/app-steam@autostart.service.d/slsteam-guardian.conf"
+FOREIGN="$EMPTY_UNITS/app-steam@autostart.service.d/steamtools-guardian.conf"
 mkdir -p "$(dirname "$FOREIGN")"; printf '# foreign\n' > "$FOREIGN"
 cp "$TMP/autostart-steam.desktop" "$EMPTY_AUTO/steam.desktop"
 dgu_install_autostart_dropins
@@ -317,7 +317,7 @@ CLI_HOME="$TMP/CLI Home"
 CLI_SYSTEM_DATA="$TMP/CLI System Data"
 CLI_SYSTEM_CONFIG="$TMP/CLI System Config"
 CLI_UNITS="$CLI_HOME/config/systemd/user"
-CLI_WRAPPER="$CLI_HOME/.local/share/SLSsteam/path/steam"
+CLI_WRAPPER="$CLI_HOME/.local/share/SteamTools/path/steam"
 mkdir -p "$CLI_HOME/data/applications" "$CLI_HOME/config/autostart" \
          "$CLI_HOME/Desktop" "$CLI_SYSTEM_DATA/applications" \
          "$CLI_SYSTEM_CONFIG/autostart"
@@ -340,8 +340,8 @@ HOME="$CLI_HOME" DC_HOME="$CLI_HOME" XDG_DATA_HOME="$CLI_HOME/data" \
   DGU_SYSTEMCTL="$FAKE_BIN/fake systemctl" \
   bash "$HERE/ensure-desktop-coverage.sh" --guardian >/dev/null 2>&1
 check "guardian CLI installs runtime path unit" "yes" \
-  "$([ -f "$CLI_UNITS/slsteam-desktop-guardian.path" ] && echo yes || echo no)"
-CLI_DROPIN="$CLI_UNITS/app-steam@autostart.service.d/slsteam-guardian.conf"
+  "$([ -f "$CLI_UNITS/steamtools-desktop-guardian.path" ] && echo yes || echo no)"
+CLI_DROPIN="$CLI_UNITS/app-steam@autostart.service.d/steamtools-guardian.conf"
 check "guardian CLI creates late autostart drop-in" "yes" \
   "$([ -f "$CLI_DROPIN" ] && echo yes || echo no)"
 check "late autostart drop-in preserves ordinary flag" \
@@ -354,7 +354,7 @@ check "late autostart drop-in preserves ordinary flag" \
 # nothing ever creates the cold-boot closure and injection is lost after reboot.
 USR_HOME="$TMP/USER Home"
 USR_UNITS="$USR_HOME/config/systemd/user"
-USR_WRAPPER="$USR_HOME/.local/share/SLSsteam/path/steam"
+USR_WRAPPER="$USR_HOME/.local/share/SteamTools/path/steam"
 mkdir -p "$USR_HOME/data/applications" "$USR_HOME/config/autostart" "$USR_HOME/Desktop"
 cat > "$USR_HOME/config/autostart/steam.desktop" <<'EOF'
 [Desktop Entry]
@@ -369,7 +369,7 @@ HOME="$USR_HOME" DC_HOME="$USR_HOME" XDG_DATA_HOME="$USR_HOME/data" \
   WRAPPER="$USR_WRAPPER" DGU_UNIT_DIR="$USR_UNITS" \
   DGU_SYSTEMCTL="$FAKE_BIN/fake systemctl" \
   bash "$HERE/ensure-desktop-coverage.sh" --user >/dev/null 2>&1
-USR_DROPIN="$USR_UNITS/app-steam@autostart.service.d/slsteam-guardian.conf"
+USR_DROPIN="$USR_UNITS/app-steam@autostart.service.d/steamtools-guardian.conf"
 check "CLI --user converges the autostart drop-in" "yes" \
   "$([ -f "$USR_DROPIN" ] && echo yes || echo no)"
 check "CLI --user drop-in targets the wrapper with preserved flag" \

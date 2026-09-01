@@ -1,8 +1,8 @@
-// Standalone test for RuntimeDir: where SLSsteam keeps its runtime contracts.
+// Standalone test for RuntimeDir: where SteamTools keeps its runtime contracts.
 //
-// The API command file lived at /tmp/SLSsteam.API — a fixed name in a
+// The API command file lived at /tmp/SteamTools.API — a fixed name in a
 // world-writable directory, with no access control, driving app installs. The
-// per-process load lock lived at /tmp/.slssteam.load.<pid>, opened without
+// per-process load lock lived at /tmp/.steamtools.load.<pid>, opened without
 // O_EXCL or O_NOFOLLOW; a local process that pre-created it and held an flock
 // made our own lock attempt fail, and the hooking pass was then skipped, which
 // turned a lock file into an injection kill switch.
@@ -36,16 +36,16 @@ int main()
 
 	// ── base selection ──────────────────────────────────────────────────────
 	CHECK(RuntimeDir::resolveBase("/run/user/1000", "/home/u")
-	          == "/run/user/1000/SLSsteam",
+	          == "/run/user/1000/SteamTools",
 	      "XDG_RUNTIME_DIR is preferred");
 	CHECK(RuntimeDir::resolveBase(nullptr, "/home/u")
-	          == "/home/u/.cache/SLSsteam",
+	          == "/home/u/.cache/SteamTools",
 	      "HOME is the fallback when there is no runtime dir");
-	CHECK(RuntimeDir::resolveBase("", "/home/u") == "/home/u/.cache/SLSsteam",
+	CHECK(RuntimeDir::resolveBase("", "/home/u") == "/home/u/.cache/SteamTools",
 	      "an empty runtime dir falls back to HOME");
 	// A relative value cannot be trusted to be the user's own directory.
 	CHECK(RuntimeDir::resolveBase("run/user/1000", "/home/u")
-	          == "/home/u/.cache/SLSsteam",
+	          == "/home/u/.cache/SteamTools",
 	      "a relative runtime dir is ignored");
 	CHECK(RuntimeDir::resolveBase(nullptr, "u") == "",
 	      "a relative HOME yields no base");
@@ -84,7 +84,7 @@ int main()
 	      "a fifo is not a private file");
 
 	// ── ensureDir against a real filesystem ─────────────────────────────────
-	char tmpl[] = "/tmp/slssteam-rtd-XXXXXX";
+	char tmpl[] = "/tmp/steamtools-rtd-XXXXXX";
 	const char* sandbox = mkdtemp(tmpl);
 	if (sandbox == nullptr)
 	{

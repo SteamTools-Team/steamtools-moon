@@ -302,7 +302,7 @@ void refreshInBackground(
 // without the provisioner object itself.
 inline std::string cacheLockPath()
 {
-	return ConfigPath::slsteamConfigDir(
+	return ConfigPath::steamtoolsConfigDir(
 	           std::getenv("XDG_CONFIG_HOME"), std::getenv("HOME")) +
 	       "/cache/.picsbuffer.lock";
 }

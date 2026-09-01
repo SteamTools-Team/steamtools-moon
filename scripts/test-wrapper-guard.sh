@@ -7,7 +7,7 @@
 # Why this exists
 # ---------------
 # In gamescope Game Mode the session supervisor relaunches Steam every time it
-# exits. If the injected stack (SLSsteam/CloudRedirect/Lumen) is incompatible
+# exits. If the injected stack (SteamTools/CloudRedirect/Lumen) is incompatible
 # with a freshly-updated Steam client and stalls the engine, the device loops
 # forever and the user can never reach Desktop Mode to update. The wrapper must
 # detect repeated STARTUP CRASHES and LATCH into a vanilla launch (no
@@ -45,11 +45,11 @@ FN="$(awk '
 HOME_DIR="$(mktemp -d)"
 export HOME="$HOME_DIR"
 export XDG_STATE_HOME="$HOME_DIR/.local/state"
-SLSDIR="$HOME_DIR/.local/share/SLSsteam"
-GUARD_DIR="$XDG_STATE_HOME/slsteam-moon"
+SLSDIR="$HOME_DIR/.local/share/SteamTools"
+GUARD_DIR="$XDG_STATE_HOME/steamtools-moon"
 
 mkdir -p "$SLSDIR"
-printf 'so'  > "$SLSDIR/SLSsteam.so"
+printf 'so'  > "$SLSDIR/SteamTools.so"
 printf 'inj' > "$SLSDIR/library-inject.so"
 
 ( log_info() { :; }; log_success() { :; }; log_warn() { :; }; eval "$FN"; SLSDIR="$SLSDIR" create_steam_wrapper )
@@ -116,11 +116,11 @@ echo "== test-wrapper-guard =="
 # LD_AUDIT.  The wrapper must canonicalize its own entries to one pair and keep
 # unrelated auditors intact.
 reset_state
-export LD_AUDIT="$SLSDIR/library-inject.so:$SLSDIR/SLSsteam.so:$SLSDIR/library-inject.so:$HOME_DIR/foreign-auditor.so"
+export LD_AUDIT="$SLSDIR/library-inject.so:$SLSDIR/SteamTools.so:$SLSDIR/library-inject.so:$HOME_DIR/foreign-auditor.so"
 export LD_PRELOAD="/lib/x86_64-linux-gnu/libm.so.6"
 export LD_LIBRARY_PATH="$HOME_DIR/foreign-libs"
 run_wrapper
-expected_audit="$SLSDIR/library-inject.so:$SLSDIR/SLSsteam.so:$HOME_DIR/foreign-auditor.so"
+expected_audit="$SLSDIR/library-inject.so:$SLSDIR/SteamTools.so:$HOME_DIR/foreign-auditor.so"
 actual_audit="$(sed -n 's/^LD_AUDIT=//p' "$ENV_CAPTURE")"
 [ "$actual_audit" = "$expected_audit" ] && ok "wrapper canonicalizes inherited SLS audit entries" || bad "audit was not canonicalized: $actual_audit"
 [ "$(printf '%s' "$actual_audit" | awk -F: -v a="$SLSDIR/library-inject.so" 'BEGIN{n=0}{for(i=1;i<=NF;i++) if($i==a)n++} END{print n}')" = 1 ] \
@@ -130,7 +130,7 @@ actual_audit="$(sed -n 's/^LD_AUDIT=//p' "$ENV_CAPTURE")"
 # The wrapper should discard it and resolve the normal Steam script instead.
 MANAGED_PIN="$HOME_DIR/managed-backup.orig"
 FALLBACK_STEAM="$HOME_DIR/.steam/steam/steam.sh"
-printf '#!/bin/sh\n# slsteam-moon system launcher shim\nprintf "managed\\n" >> "$INVOCATIONS"\n' > "$MANAGED_PIN"
+printf '#!/bin/sh\n# steamtools-moon system launcher shim\nprintf "managed\\n" >> "$INVOCATIONS"\n' > "$MANAGED_PIN"
 printf '#!/bin/sh\nprintf "fallback\\n" >> "$INVOCATIONS"\n' > "$FALLBACK_STEAM"
 chmod +x "$MANAGED_PIN" "$FALLBACK_STEAM"
 reset_state
@@ -148,12 +148,12 @@ export SLSM_STEAM_BIN="$FAKE_STEAM"
 SYMLINK_ROOT="$HOME_DIR/symlink-case"
 SYMLINK_HOME_REAL="$SYMLINK_ROOT/home-real"
 SYMLINK_HOME="$SYMLINK_ROOT/home-link"
-mkdir -p "$SYMLINK_HOME_REAL/.local/share/SLSsteam/system-launcher-backup/usr/bin"
+mkdir -p "$SYMLINK_HOME_REAL/.local/share/SteamTools/system-launcher-backup/usr/bin"
 ln -s "$SYMLINK_HOME_REAL" "$SYMLINK_HOME"
-SYMLINK_SLSDIR="$SYMLINK_HOME/.local/share/SLSsteam"
+SYMLINK_SLSDIR="$SYMLINK_HOME/.local/share/SteamTools"
 SYMLINK_ORIG="$SYMLINK_SLSDIR/system-launcher-backup/usr/bin/steam.orig"
 SYMLINK_LOG="$SYMLINK_ROOT/invocation.log"
-printf 'so' > "$SYMLINK_SLSDIR/SLSsteam.so"
+printf 'so' > "$SYMLINK_SLSDIR/SteamTools.so"
 printf 'inj' > "$SYMLINK_SLSDIR/library-inject.so"
 (
 	export HOME="$SYMLINK_HOME" SLSDIR="$SYMLINK_SLSDIR"
@@ -189,7 +189,7 @@ bs=$(( $(date +%s) - 30 )); touch -d "@$bs" "$GUARD_DIR/last_launch"; touch -d "
 run_wrapper
 [ -f "$GUARD_DIR/safe_mode" ] || bad "could not create safe-mode fixture"
 export SLSM_GUARD_MAX_FAILS=3
-export LD_AUDIT="$SLSDIR/library-inject.so:$SLSDIR/SLSsteam.so"
+export LD_AUDIT="$SLSDIR/library-inject.so:$SLSDIR/SteamTools.so"
 export LD_PRELOAD="/lib/x86_64-linux-gnu/libm.so.6"
 export LD_LIBRARY_PATH="$HOME_DIR/foreign-libs"
 run_wrapper
@@ -249,7 +249,7 @@ run_wrapper
 [ "$(nth 5)" = "vanilla" ] && ok "stays vanilla while latched" || bad "boot 5: $(nth 5)"
 
 # --- payload update clears the latch ------------------------------------------
-sleep 1; printf 'so-v2-bigger' > "$SLSDIR/SLSsteam.so"
+sleep 1; printf 'so-v2-bigger' > "$SLSDIR/SteamTools.so"
 : > "$INVOCATIONS"
 run_wrapper
 [ "$(nth 1)" = "injected" ] && ok "payload update clears latch, re-enables injection" || bad "after update: $(nth 1)"

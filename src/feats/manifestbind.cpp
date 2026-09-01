@@ -253,7 +253,7 @@ namespace
 		return chosenGid;
 	}
 
-	// --- DIAGNOSTIC: install-planner runtime trace (env SLSSTEAM_PLAN_TRACE) -
+	// --- DIAGNOSTIC: install-planner runtime trace (env STEAMTOOLS_PLAN_TRACE) -
 	//
 	// Static analysis could not tie the
 	// depot-list BUILDER (the LumaCore `BuildDepotDependency` equivalent) back
@@ -274,7 +274,7 @@ namespace
 	// caller (the builder/scheduler) appear in the scan window.
 	//
 	// Gated behind the env var so a normal session pays nothing; capped per
-	// frame so a many-depot install doesn't flood ~/.SLSsteam.log.
+	// frame so a many-depot install doesn't flood ~/.SteamTools.log.
 	bool g_planTrace = false;
 	std::atomic<int> g_traceLeftLeaf{12};
 	std::atomic<int> g_traceLeftPlanner{12};
@@ -803,7 +803,7 @@ namespace
 
 					// This is the exact set Steam selected for the real plan,
 					// after pin rewriting and size-0 pruning. Kick off only
-					// these manifests on the bounded SLSsteam executor. A pin is
+					// these manifests on the bounded SteamTools executor. A pin is
 					// also sufficient to include a depot whose key was not marked
 					// managed by the current discovery pass.
 					const uint64_t targetGid = *gidp;
@@ -913,12 +913,12 @@ namespace ManifestBind
 {
 	bool setup()
 	{
-		if (const char* env = std::getenv("SLSSTEAM_MANIFEST_FALLBACK"))
+		if (const char* env = std::getenv("STEAMTOOLS_MANIFEST_FALLBACK"))
 		{
 			g_fallbackEnabled = !(env[0] == '0' && env[1] == '\0');
 		}
 
-		if (const char* env = std::getenv("SLSSTEAM_PLAN_TRACE"))
+		if (const char* env = std::getenv("STEAMTOOLS_PLAN_TRACE"))
 		{
 			g_planTrace = !(env[0] == '0' && env[1] == '\0');
 		}

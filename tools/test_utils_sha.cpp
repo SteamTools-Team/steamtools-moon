@@ -22,12 +22,12 @@ namespace
 
 int main()
 {
-	const std::string missing = "/tmp/slsteam-test-utils-sha-missing";
+	const std::string missing = "/tmp/steamtools-test-utils-sha-missing";
 	std::remove(missing.c_str());
 	check(Utils::getFileSHA256(missing.c_str()).empty(),
 	      "missing file returns an empty digest");
 
-	const std::string path = "/tmp/slsteam-test-utils-sha-input";
+	const std::string path = "/tmp/steamtools-test-utils-sha-input";
 	{
 		std::ofstream out(path, std::ios::binary | std::ios::trunc);
 		out << "abc";

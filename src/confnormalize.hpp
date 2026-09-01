@@ -1,6 +1,6 @@
 #pragma once
 
-// Last-resort text repair for a malformed SLSsteam config.yaml.
+// Last-resort text repair for a malformed SteamTools config.yaml.
 //
 // The LuaTools frontend edits the AdditionalApps block-list by hand. A writer
 // bug could leave the block with INCONSISTENT indentation (some items indented,

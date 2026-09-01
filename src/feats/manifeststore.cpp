@@ -101,7 +101,7 @@ namespace ManifestStore
 	{
 		const char* home = std::getenv("HOME");
 		if (!home) return {};
-		return std::string(home) + "/.config/SLSsteam/manifests";
+		return std::string(home) + "/.config/SteamTools/manifests";
 	}
 
 	void archiveDepot(uint32_t depotId)

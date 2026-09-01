@@ -64,7 +64,7 @@ namespace ManifestStoreIO
 	inline fs::path uniqueTempPath(const fs::path& target)
 	{
 		static std::atomic<uint64_t> counter{0};
-		return target.string() + ".slsteam_tmp."
+		return target.string() + ".steamtools_tmp."
 		    + std::to_string(static_cast<unsigned long>(getpid())) + "."
 		    + std::to_string(counter.fetch_add(1, std::memory_order_relaxed));
 	}

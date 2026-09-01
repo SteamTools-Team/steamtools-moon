@@ -20,14 +20,14 @@
 //
 // ENABLING IT
 // -----------
-//   SLSSTEAM_AFFTRACE=1   in the environment of the Steam process
+//   STEAMTOOLS_AFFTRACE=1   in the environment of the Steam process
 //
 // Accepted true values: 1, y, yes, on, true (case-insensitive). Anything else
 // (including unset) leaves tracing off. When off, every hook-side call is a
 // single relaxed atomic load and an early return, so the IPC hot path is not
 // touched in normal use.
 //
-// Output: $HOME/.SLSsteam.afftrace.log, created 0600, truncated at open,
+// Output: $HOME/.SteamTools.afftrace.log, created 0600, truncated at open,
 // hard-capped at kMaxRecords event lines plus kMaxRollups per-hour summary
 // lines. Once a cap is hit the sink stops writing (no rotation, no growth).
 //
@@ -86,8 +86,8 @@ namespace AffTrace
 	enum class Src : std::uint8_t
 	{
 		None = 0,
-		Config,   // the SLSsteam config / stplug-in watcher pthread
-		Api,      // the /tmp/SLSsteam.API watcher pthread
+		Config,   // the SteamTools config / stplug-in watcher pthread
+		Api,      // the /tmp/SteamTools.API watcher pthread
 		Ipc,      // an owner IPC frame
 		Site,     // the exact Steam call site
 	};
@@ -447,7 +447,7 @@ namespace AffTrace
 		const char* home = std::getenv("HOME");
 		if (home == nullptr || home[0] == '\0')
 			return std::string();
-		return std::string(home) + "/.SLSsteam.afftrace.log";
+		return std::string(home) + "/.SteamTools.afftrace.log";
 	}
 
 	// Read the opt-in and, when set, open the bounded 0600 sink. Cheap and
@@ -457,7 +457,7 @@ namespace AffTrace
 		bool expected = false;
 		if (!detail::g_initDone.compare_exchange_strong(expected, true))
 			return enabled();
-		if (!optInEnabled(std::getenv("SLSSTEAM_AFFTRACE")))
+		if (!optInEnabled(std::getenv("STEAMTOOLS_AFFTRACE")))
 			return false;
 
 		const std::string path = defaultPath();

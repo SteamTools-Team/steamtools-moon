@@ -456,7 +456,7 @@ void recvProductInfoResponse(CMsgClientPICSProductInfoResponse* resp)
 	);
 
 	const bool legacyStaging = legacyManifestStagingEnabled(
-	    std::getenv("SLSSTEAM_LEGACY_MANIFEST_STAGING"));
+	    std::getenv("STEAMTOOLS_LEGACY_MANIFEST_STAGING"));
 	g_pLog->infoOnce(
 	    "PICS: manifest staging mode=%s\n",
 	    legacyStaging ? "legacy synchronous + prewarm"

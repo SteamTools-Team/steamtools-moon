@@ -117,7 +117,7 @@ void runLoop()
 	// popups for it: a re-stage failure here is background self-healing, not
 	// a user-actionable event, and a big multi-DLC title (Steam purges its
 	// unused DLC depots after the base commit) would otherwise fire a popup
-	// per failing depot per 30s pass.  The warnings still reach ~/.SLSsteam
+	// per failing depot per 30s pass.  The warnings still reach ~/.SteamTools
 	// .log; the synchronous install path (a different thread) keeps popups.
 	t_suppressNotify = true;
 

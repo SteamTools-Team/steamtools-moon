@@ -28,7 +28,7 @@ namespace AuditBinding
 		switch (name[0])
 		{
 			case 's':
-				return std::strcmp(name, "slsteam_local_stats_epoch_v1") == 0
+				return std::strcmp(name, "steamtools_local_stats_epoch_v1") == 0
 					? Symbol::LocalStatsEpoch : Symbol::None;
 			case 'e':
 			{

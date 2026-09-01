@@ -64,13 +64,13 @@ int main()
 		CHECK(r.file == "/x/sslcert.pem", "SSL_CERT_FILE honored");
 	}
 
-	// 3) SLSSTEAM_CA_BUNDLE override wins over the standard env vars.
+	// 3) STEAMTOOLS_CA_BUNDLE override wins over the standard env vars.
 	{
-		auto env = envFrom({{"SLSSTEAM_CA_BUNDLE", "/override.pem"},
+		auto env = envFrom({{"STEAMTOOLS_CA_BUNDLE", "/override.pem"},
 		                    {"CURL_CA_BUNDLE",     "/curl.pem"}});
 		auto ex  = existsFrom({"/override.pem", "/curl.pem"});
 		const auto r = ca::discoverWith(env, ex);
-		CHECK(r.file == "/override.pem", "SLSSTEAM_CA_BUNDLE overrides CURL_CA_BUNDLE");
+		CHECK(r.file == "/override.pem", "STEAMTOOLS_CA_BUNDLE overrides CURL_CA_BUNDLE");
 	}
 
 	// 4) An env path that does NOT exist is skipped; discovery falls through

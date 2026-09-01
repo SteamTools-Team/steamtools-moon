@@ -99,7 +99,7 @@ bool hasScopedValidationArtifact(const std::string& directory)
 {
 	for (const auto& entry : std::filesystem::directory_iterator(directory))
 	{
-		if (entry.path().filename().string().find(".slssteam-validate.") !=
+		if (entry.path().filename().string().find(".steamtools-validate.") !=
 			std::string::npos)
 			return true;
 	}
@@ -137,9 +137,9 @@ bool cacheMarkerAllowsRead(uint32_t)
 int main()
 {
 	const std::string root =
-		"/tmp/slssteam-appinfo-transaction." + std::to_string(getpid());
+		"/tmp/steamtools-appinfo-transaction." + std::to_string(getpid());
 	const std::string configHome = root + "/config";
-	const std::string cacheDir = configHome + "/SLSsteam/cache";
+	const std::string cacheDir = configHome + "/SteamTools/cache";
 	const std::string appinfo = root + "/appcache/appinfo.vdf";
 	std::error_code ec;
 	std::filesystem::create_directories(cacheDir, ec);
@@ -179,7 +179,7 @@ int main()
 	assert(orphanQuarantined);
 	const auto published = readAll(appinfo);
 	assert(!published.empty());
-	assert(std::filesystem::exists(appinfo + ".slssteam-previous"));
+	assert(std::filesystem::exists(appinfo + ".steamtools-previous"));
 
 	// Runtime publication is targeted: a refresh for 1001 must not splice the
 	// separately valid cache pair for 1002 into Steam's backing file.
@@ -250,7 +250,7 @@ int main()
 	// must not replace that file or create/overwrite its rollback snapshot.
 	const auto racedAppinfo = root + "/appcache/raced.vdf";
 	createEmptyAppInfo(racedAppinfo);
-	const auto raceRollback = racedAppinfo + ".slssteam-previous";
+	const auto raceRollback = racedAppinfo + ".steamtools-previous";
 	std::string rollbackSeedError;
 	assert(AtomicFile::write(
 		raceRollback, "existing rollback", rollbackSeedError));
@@ -270,8 +270,8 @@ int main()
 	assert(AppInfoVdf::injectAllCached(appinfo) == 2);
 	assert(readAll(appinfo) == published);
 
-	setenv("SLSSTEAM_ASYNC_PROVISION", "1", 1);
-	setenv("SLSSTEAM_PROVISION_TTL", "300", 1);
+	setenv("STEAMTOOLS_ASYNC_PROVISION", "1", 1);
+	setenv("STEAMTOOLS_PROVISION_TTL", "300", 1);
 	const auto staleBuffer = cacheDir + "/picsbuffer_1001.bin";
 	struct timespec staleTimes[2]{};
 	const auto staleNow = std::time(nullptr) - 3600;
@@ -288,8 +288,8 @@ int main()
 	createEmptyAppInfo(fallbackAppinfo);
 	assert(AppInfoVdf::injectAllCached(fallbackAppinfo) == 2);
 
-	unsetenv("SLSSTEAM_ASYNC_PROVISION");
-	unsetenv("SLSSTEAM_PROVISION_TTL");
+	unsetenv("STEAMTOOLS_ASYNC_PROVISION");
+	unsetenv("STEAMTOOLS_PROVISION_TTL");
 
 	// A normal pair retaining a stale synthetic marker is inconsistent and
 	// must not be injected; a synthetic pair is accepted only after its marker
@@ -327,7 +327,7 @@ int main()
 
 	// Simulate a torn/corrupt v41 file.  Keep the published snapshot as the
 	// rollback baseline so recovery is tested against a known-good file.
-	std::filesystem::copy_file(appinfo, appinfo + ".slssteam-previous",
+	std::filesystem::copy_file(appinfo, appinfo + ".steamtools-previous",
 	                           std::filesystem::copy_options::overwrite_existing);
 	{
 		std::ofstream out(appinfo, std::ios::binary | std::ios::trunc);

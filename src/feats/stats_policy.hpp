@@ -82,5 +82,5 @@ uint64_t localEpoch(uint32_t app, uint32_t account, bool refresh = false);
 }
 
 // C-only ABI across the LD_AUDIT / LD_PRELOAD namespaces. 0 means passthrough.
-extern "C" uint64_t slsteam_local_stats_epoch_v1(uint32_t app, uint32_t account,
+extern "C" uint64_t steamtools_local_stats_epoch_v1(uint32_t app, uint32_t account,
                                                 uint32_t refresh) noexcept;

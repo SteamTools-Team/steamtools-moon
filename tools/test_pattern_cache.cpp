@@ -106,7 +106,7 @@ namespace
 		TempDirectory()
 		{
 			path = std::filesystem::temp_directory_path()
-			       / "slsteam-pattern-cache-test";
+			       / "steamtools-pattern-cache-test";
 			std::error_code error;
 			std::filesystem::remove_all(path, error);
 			std::filesystem::create_directories(path, error);

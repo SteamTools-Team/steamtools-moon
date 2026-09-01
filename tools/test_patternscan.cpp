@@ -1,6 +1,6 @@
 // Regression test for the MemHlp::patternScan out-of-bounds read that crashed
 // Steam at startup on some machines (SIGSEGV in patternScan, before the logger
-// is even created -> no ~/.SLSsteam.log). Two distinct bugs are covered:
+// is even created -> no ~/.SteamTools.log). Two distinct bugs are covered:
 //
 //   1. Segment filter: `seg->prot & LM_PROT_XR` is true for ANY readable
 //      region (LM_PROT_XR == X|R), so rw-p / r--p DATA segments were scanned.

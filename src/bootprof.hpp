@@ -17,7 +17,7 @@ namespace BootProf
 inline bool enabled()
 {
 	static const bool value = [] {
-		const char* setting = std::getenv("SLSSTEAM_BOOTPROF");
+		const char* setting = std::getenv("STEAMTOOLS_BOOTPROF");
 		return setting && *setting && *setting != '0';
 	}();
 	return value;

@@ -236,7 +236,7 @@ namespace Notify
 		cmd += std::to_string(s.timeoutMs);
 		cmd += " -u \"";
 		cmd += s.urgency;
-		cmd += "\" \"SLSsteam-moon\" \"";
+		cmd += "\" \"SteamTools-moon\" \"";
 		cmd += shellEscapeDoubleQuoted(body);
 		cmd += "\"";
 		return cmd;

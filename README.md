@@ -1,10 +1,8 @@
-# slsteam-moon
+# steamtools-moon
 
-A fork of [SLSsteam](https://github.com/AceSLS/SLSsteam) with extra
+A fork of [slsteam-moon](https://github.com/swwayps/slsteam-moon) adapted for SteamTools, with extra
 protocol handlers, SteamStub support, and a Lua manifest importer.
 
-For the recommended installation method, see
-[swwayps/luatools-moon](https://github.com/swwayps/luatools-moon).
 For building, see [`docs/BUILDING.md`](docs/BUILDING.md).
 
 ## Credits
@@ -15,6 +13,7 @@ Upstream:
   the hook framework, protobuf plumbing, ownership patches,
   family-share bypass, and the broader feature set this branch
   builds on.
+- [swwayps](https://github.com/swwayps) — slsteam-moon fork.
 
 Reference material:
 
@@ -30,4 +29,4 @@ Reference material:
 
 ## Support
 
-Open an issue: https://github.com/swwayps/slsteam-moon/issues
+Open an issue: https://github.com/SteamTools-Team/steamtools-moon/issues

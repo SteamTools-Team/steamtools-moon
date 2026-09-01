@@ -1,31 +1,31 @@
 #!/usr/bin/env bash
 # ============================================================================
-# slsteam-moon auto-fix
+# steamtools-moon auto-fix
 #
-# Runs when Lumen detects that slsteam-moon did NOT inject into the current
+# Runs when Lumen detects that steamtools-moon did NOT inject into the current
 # Steam session (the "Buy" button shows on games added via LuaTools). It:
-#   1. downloads the LATEST slsteam-moon (Lumen) release asset,
+#   1. downloads the LATEST steamtools-moon (Lumen) release asset,
 #   2. runs its setup.sh install — which stops Steam, installs the library and
 #      repairs EVERY *steam*.desktop launcher on the system (prompting for the
 #      sudo password here in the terminal for the system-wide entries),
 #   3. relaunches Steam through the injected wrapper.
 #
 # Self-contained: fetched + run via `curl -fsSL <raw>/autofix.sh | bash`, so it
-# must not depend on any sibling file. Only touches slsteam-moon (not Lumen or
+# must not depend on any sibling file. Only touches steamtools-moon (not Lumen or
 # the LuaTools plugin).
 #
 # Served from the repo's raw branch URL, so fixes go live without a release cut.
 # ============================================================================
 set -u
 
-REPO="swwayps/slsteam-moon"
+REPO="SteamTools-Team/steamtools-moon"
 # Asset name matcher. jq's test() sees the parsed .name (no surrounding quotes),
 # so it uses '.*'; the grep fallback scans raw JSON, so it uses '[^"]*' to avoid
 # crossing a quote. Both use '[.]' for a literal dot (a bare '\.' is not a valid
 # jq string escape and a raw '"' inside a jq "..." string breaks the parse).
-ASSET_RE_JQ='slsteam-moon-linux-.*-lumen[.]zip'
-ASSET_RE_GREP='slsteam-moon-linux-[^"]*-lumen[.]zip'
-SLSDIR="$HOME/.local/share/SLSsteam"
+ASSET_RE_JQ='steamtools-moon-linux-.*-lumen[.]zip'
+ASSET_RE_GREP='steamtools-moon-linux-[^"]*-lumen[.]zip'
+SLSDIR="$HOME/.local/share/SteamTools"
 WRAPPER="$SLSDIR/path/steam"
 
 # ── pretty output (degrades to plain when not a TTY) ────────────────────────
@@ -42,13 +42,13 @@ err()   { echo -e "${RED}✗${NC} $1" >&2; }
 pause() { read -rp "Press Enter to close this window… " _ 2>/dev/null || true; }
 die()   { err "$1"; pause; exit 1; }
 
-echo -e "${BOLD}${BLUE}◯  slsteam-moon auto-fix${NC}"
+echo -e "${BOLD}${BLUE}◯  steamtools-moon auto-fix${NC}"
 echo
 
 command -v curl >/dev/null 2>&1 || die "curl is required but not installed."
 
 # ── 1. resolve the latest -lumen release asset ──────────────────────────────
-info "Finding the latest slsteam-moon release"
+info "Finding the latest steamtools-moon release"
 API="https://api.github.com/repos/${REPO}/releases?per_page=50"
 RELEASES_JSON="$(curl -fsSL --connect-timeout 15 --retry 3 --retry-delay 2 \
 	-H 'Accept: application/vnd.github+json' "$API")" \
@@ -65,13 +65,13 @@ else
 		| grep -oE '"browser_download_url":[[:space:]]*"[^"]*'"$ASSET_RE_GREP"'"' \
 		| sed -E 's/.*"(https[^"]+)"$/\1/' | head -n1)"
 fi
-[ -n "${URL:-}" ] || die "Could not find a slsteam-moon (Lumen) release asset."
+[ -n "${URL:-}" ] || die "Could not find a steamtools-moon (Lumen) release asset."
 ok "Found: $URL"
 
 # ── 2. download + extract ───────────────────────────────────────────────────
 TMP="$(mktemp -d)" || die "Could not create a temp directory."
 trap 'rm -rf "${TMP:-}"' EXIT
-ZIP="$TMP/slsteam-moon.zip"
+ZIP="$TMP/steamtools-moon.zip"
 
 info "Downloading"
 curl -fL --connect-timeout 15 --retry 3 --retry-delay 2 "$URL" -o "$ZIP" \
@@ -96,12 +96,12 @@ EXTRACT_ROOT="$(dirname "$SETUP")"
 
 # ── 3. install (stops Steam, patches every *steam*.desktop, sudo for system) ─
 echo
-info "Installing slsteam-moon (this stops Steam and may ask for your password)"
+info "Installing steamtools-moon (this stops Steam and may ask for your password)"
 echo
 chmod +x "$SETUP" 2>/dev/null || true
-( cd "$EXTRACT_ROOT" && bash "$SETUP" install ) || die "slsteam-moon setup failed."
+( cd "$EXTRACT_ROOT" && bash "$SETUP" install ) || die "steamtools-moon setup failed."
 echo
-ok "slsteam-moon installed"
+ok "steamtools-moon installed"
 
 # ── 4. relaunch Steam through the injected wrapper ──────────────────────────
 STEAM_LAUNCH=""
@@ -116,7 +116,7 @@ if [ -z "$STEAM_LAUNCH" ]; then
 elif [ -z "${DISPLAY:-}" ] && [ -z "${WAYLAND_DISPLAY:-}" ]; then
 	warn "No graphical session detected — start Steam yourself to finish."
 else
-	info "Restarting Steam with slsteam-moon active"
+	info "Restarting Steam with steamtools-moon active"
 	setsid nohup "$STEAM_LAUNCH" >/dev/null 2>&1 < /dev/null &
 	ok "Steam is starting. Give it a moment to load."
 fi

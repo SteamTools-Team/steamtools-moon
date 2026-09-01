@@ -1,4 +1,4 @@
-# Builder image for slsteam-moon's portable build.
+# Builder image for steamtools-moon's portable build.
 #
 # Ubuntu 22.04 supplies the release toolchain. Its glibc is 2.35, while the
 # produced helper is policy-gated to require no symbols newer than GLIBC_2.34.
@@ -11,7 +11,7 @@
 FROM ubuntu:22.04
 
 # Install 32-bit toolchain and the dev headers the Makefile links.
-# (-m32 builds; SLSsteam.so must match Steam's 32-bit ubuntu12_32 client.)
+# (-m32 builds; SteamTools.so must match Steam's 32-bit ubuntu12_32 client.)
 RUN dpkg --add-architecture i386 && \
     apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get \

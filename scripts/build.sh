@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build slsteam-moon binaries.
+# Build steamtools-moon binaries.
 #
 # Two modes:
 #   --host       Use the host toolchain (fast, dev iteration).
@@ -11,7 +11,7 @@
 #                most modern distros). This is what release builds use.
 #
 # Outputs:
-#   bin/SLSsteam.so
+#   bin/SteamTools.so
 #   bin/library-inject.so
 #   bin/pattern-refresh
 #

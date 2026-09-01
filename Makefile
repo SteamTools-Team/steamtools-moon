@@ -1,12 +1,12 @@
-# Build glue for slsteam-moon.
+# Build glue for steamtools-moon.
 #
 # Common invocations:
-#   make             Build bin/SLSsteam.so + bin/library-inject.so on the host.
+#   make             Build bin/SteamTools.so + bin/library-inject.so on the host.
 #                    Use scripts/build.sh --portable for a release-grade
 #                    binary with broader glibc compatibility.
 #   make clean       Remove all build artefacts.
 #   make install     Install onto the host (delegates to setup.sh install).
-#   make release     Build portable + package dist/slsteam-moon-linux-<ver>.zip.
+#   make release     Build portable + package dist/steamtools-moon-linux-<ver>.zip.
 #                    Same as scripts/release.sh.
 #
 # -MMD/-MP keep dependency files in sync so header edits trigger
@@ -87,21 +87,21 @@ test-fakeappid-presence: obj/sdk/protobufs/encrypted_app_ticket.pb.o \
 		-Wl,--gc-sections -pthread -o /tmp/test_fakeappid_presence
 	/tmp/test_fakeappid_presence
 
-test-stats-audit: bin/SLSsteam.so
+test-stats-audit: bin/SteamTools.so
 	$(CXX) -m32 -std=c++20 -rdynamic tools/test_stats_audit.cpp -ldl -o /tmp/test_stats_audit
 	/tmp/test_stats_audit
-	LD_AUDIT=$(CURDIR)/bin/SLSsteam.so /tmp/test_stats_audit audit
+	LD_AUDIT=$(CURDIR)/bin/SteamTools.so /tmp/test_stats_audit audit
 
 all: build
-build: bin/SLSsteam.so bin/library-inject.so bin/pattern-refresh
+build: bin/SteamTools.so bin/library-inject.so bin/pattern-refresh
 rebuild: clean build
 
-bin/SLSsteam.so: $(objs) $(libs)
+bin/SteamTools.so: $(objs) $(libs)
 	@mkdir -p bin
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 # Audit-side helper that redirects libcurl loading to a system copy.
-# Loaded ahead of SLSsteam.so via $LD_AUDIT.
+# Loaded ahead of SteamTools.so via $LD_AUDIT.
 bin/library-inject.so: tools/library-inject/main.cpp
 	@mkdir -p bin
 	$(CXX) -O3 -m32 -fPIC -shared -std=c++20 $< -o $@

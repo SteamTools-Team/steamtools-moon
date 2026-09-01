@@ -52,7 +52,7 @@ int main()
 {
 	namespace fs = std::filesystem;
 	const std::string dir = (fs::temp_directory_path() /
-	                         ("slsteam_synthmark_" + std::to_string(::getpid()))).string();
+	                         ("steamtools_synthmark_" + std::to_string(::getpid()))).string();
 	fs::create_directories(dir);
 
 	// --- marker round-trip -------------------------------------------------

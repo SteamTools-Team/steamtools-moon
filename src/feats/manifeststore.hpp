@@ -10,7 +10,7 @@
 // The LuaTools per-game zip ships a manifest for every depot (linux + windows
 // + macos).  The plugin extracts them into depotcache, but Steam can purge
 // them at any time.  ManifestStore keeps a copy under
-// ~/.config/SLSsteam/manifests/<depot>_<gid>.manifest that Steam never
+// ~/.config/SteamTools/manifests/<depot>_<gid>.manifest that Steam never
 // touches, and restores them into depotcache on demand — no network needed.
 //
 // ALL versions are kept (the archive is also the foundation for a future

@@ -9,10 +9,10 @@ unset _DGU_LIB_DIR
 : "${DGU_UNIT_DIR:=$(dc_config_home)/systemd/user}"
 : "${DGU_SYSTEMCTL:=systemctl}"
 
-DGU_SERVICE=slsteam-desktop-guardian.service
-DGU_PATH=slsteam-desktop-guardian.path
-DGU_TIMER=slsteam-desktop-guardian.timer
-DGU_UNIT_SENTINEL='# X-SLSteamMoon-GuardianUnit=true'
+DGU_SERVICE=steamtools-desktop-guardian.service
+DGU_PATH=steamtools-desktop-guardian.path
+DGU_TIMER=steamtools-desktop-guardian.timer
+DGU_UNIT_SENTINEL='# X-SteamToolsMoon-GuardianUnit=true'
 
 dgu_log() {
 	printf 'desktop-guardian-units: %s\n' "$*" >&2
@@ -32,7 +32,7 @@ Type=oneshot
 # path when it does have work to do.
 Nice=10
 IOSchedulingClass=idle
-ExecStart=%h/.local/share/SLSsteam/ensure-desktop-coverage.sh --guardian
+ExecStart=%h/.local/share/SteamTools/ensure-desktop-coverage.sh --guardian
 EOF
 }
 
@@ -46,7 +46,7 @@ Description=Periodic Steam desktop launch coverage reconciliation
 OnStartupSec=30s
 OnUnitActiveSec=5min
 Persistent=true
-Unit=slsteam-desktop-guardian.service
+Unit=steamtools-desktop-guardian.service
 
 [Install]
 WantedBy=timers.target
@@ -92,7 +92,7 @@ EOF
 		printf 'PathChanged=%s\n' "$dir"
 	done
 	cat <<'EOF'
-Unit=slsteam-desktop-guardian.service
+Unit=steamtools-desktop-guardian.service
 
 [Install]
 WantedBy=default.target
@@ -242,8 +242,8 @@ dgu_remove_units() {
 # Generated XDG-autostart unit drop-ins. These are user-owned and independent
 # from the guardian's own service/path/timer files.
 : "${DGU_SYSTEMD_ESCAPE:=systemd-escape}"
-DGU_AUTOSTART_DROPIN=slsteam-guardian.conf
-DGU_AUTOSTART_SENTINEL='# X-SLSteamMoon-AutostartDropIn=true'
+DGU_AUTOSTART_DROPIN=steamtools-guardian.conf
+DGU_AUTOSTART_SENTINEL='# X-SteamToolsMoon-AutostartDropIn=true'
 
 dgu_autostart_unit_name() {
 	local id="$1" stem escaped

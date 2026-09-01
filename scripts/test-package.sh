@@ -47,7 +47,7 @@ fi
 STUBBED=()
 BACKUP_DIR="$(mktemp -d)"
 BACKED_UP=()
-for f in bin/SLSsteam.so bin/library-inject.so bin/pattern-refresh; do
+for f in bin/SteamTools.so bin/library-inject.so bin/pattern-refresh; do
     mkdir -p bin
     if [ -e "$f" ]; then
         cp -a "$f" "$BACKUP_DIR/$(basename "$f")"
@@ -99,11 +99,11 @@ fi
 
 if [ -x scripts/check-sls-abi.sh ]; then
     READELF="$ABI_READELF" TEST_GLIBC_VERSION=2.34 \
-        scripts/check-sls-abi.sh bin/SLSsteam.so >/dev/null 2>&1 \
+        scripts/check-sls-abi.sh bin/SteamTools.so >/dev/null 2>&1 \
         && ok "SLS ABI gate accepts ELF32 GLIBC_2.34" \
         || bad "SLS ABI gate rejected ELF32 GLIBC_2.34"
     if READELF="$ABI_READELF" TEST_GLIBC_VERSION=2.35 \
-        scripts/check-sls-abi.sh bin/SLSsteam.so >/dev/null 2>&1; then
+        scripts/check-sls-abi.sh bin/SteamTools.so >/dev/null 2>&1; then
         bad "SLS ABI gate accepted GLIBC_2.35"
     else
         ok "SLS ABI gate rejects symbols newer than GLIBC_2.34"
@@ -116,12 +116,12 @@ STALE_VERSION="selftest-stale-$$"
 TEST_VERSION="selftest-$$"
 INCOMPATIBLE_VERSION="selftest-incompatible-$$"
 cleanup() {
-    rm -rf "dist/slsteam-moon-${STALE_VERSION}" \
-           "dist/slsteam-moon-linux-${STALE_VERSION}.zip" \
-           "dist/slsteam-moon-${TEST_VERSION}" \
-           "dist/slsteam-moon-linux-${TEST_VERSION}.zip" \
-           "dist/slsteam-moon-${INCOMPATIBLE_VERSION}" \
-           "dist/slsteam-moon-linux-${INCOMPATIBLE_VERSION}.zip" "$ABI_TMP"
+    rm -rf "dist/steamtools-moon-${STALE_VERSION}" \
+           "dist/steamtools-moon-linux-${STALE_VERSION}.zip" \
+           "dist/steamtools-moon-${TEST_VERSION}" \
+           "dist/steamtools-moon-linux-${TEST_VERSION}.zip" \
+           "dist/steamtools-moon-${INCOMPATIBLE_VERSION}" \
+           "dist/steamtools-moon-linux-${INCOMPATIBLE_VERSION}.zip" "$ABI_TMP"
     for f in "${STUBBED[@]}"; do rm -f "$f"; done
     for f in "${BACKED_UP[@]}"; do cp -a "$BACKUP_DIR/$(basename "$f")" "$f"; done
     rm -rf "$BACKUP_DIR"
@@ -131,7 +131,7 @@ trap cleanup EXIT
 # Non-empty but stale binaries must not be accepted as a release input. This
 # catches the ignored-bin failure mode where package.sh silently copies a
 # previous build after source files have changed.
-touch -d '@1' bin/SLSsteam.so bin/library-inject.so bin/pattern-refresh
+touch -d '@1' bin/SteamTools.so bin/library-inject.so bin/pattern-refresh
 if scripts/package.sh --version "$STALE_VERSION" >/dev/null 2>&1; then
     bad "package.sh accepted stale binaries"
 else
@@ -139,10 +139,10 @@ else
 fi
 
 # Make the test binaries current for the positive packaging assertion below.
-touch bin/SLSsteam.so bin/library-inject.so bin/pattern-refresh
+touch bin/SteamTools.so bin/library-inject.so bin/pattern-refresh
 
 if scripts/package.sh --version "$TEST_VERSION" >/dev/null 2>&1; then
-    ZIP="dist/slsteam-moon-linux-${TEST_VERSION}.zip"
+    ZIP="dist/steamtools-moon-linux-${TEST_VERSION}.zip"
     if [ -f "$ZIP" ]; then
         listing="$(unzip -l "$ZIP" 2>/dev/null)"
         echo "$listing" | grep -q "steamless-bin/Steamless.CLI.exe" \
@@ -173,17 +173,17 @@ else
     bad "package.sh exited non-zero"
 fi
 
-# The integrated package path must reject an incompatible SLSsteam ABI before
+# The integrated package path must reject an incompatible SteamTools ABI before
 # staging a release zip, not merely pass the helper's standalone unit check.
 if READELF="$ABI_READELF" TEST_GLIBC_VERSION=2.35 \
     TEST_PATTERN_GLIBC_VERSION=2.34 \
     scripts/package.sh --version "$INCOMPATIBLE_VERSION" >/dev/null 2>&1; then
-    bad "package.sh accepted incompatible SLSsteam ABI"
-elif [ -e "dist/slsteam-moon-${INCOMPATIBLE_VERSION}" ] \
-     || [ -e "dist/slsteam-moon-linux-${INCOMPATIBLE_VERSION}.zip" ]; then
-    bad "package.sh staged an incompatible SLSsteam release"
+    bad "package.sh accepted incompatible SteamTools ABI"
+elif [ -e "dist/steamtools-moon-${INCOMPATIBLE_VERSION}" ] \
+     || [ -e "dist/steamtools-moon-linux-${INCOMPATIBLE_VERSION}.zip" ]; then
+    bad "package.sh staged an incompatible SteamTools release"
 else
-    ok "package.sh rejects incompatible SLSsteam ABI before staging"
+    ok "package.sh rejects incompatible SteamTools ABI before staging"
 fi
 
 # A file with the target name must not suppress the regression target. The

@@ -67,7 +67,7 @@ HOME="$TMP/home"
 export HOME
 BIN_DIR="$TMP/usr/bin"
 STEAM_ROOT="$TMP/steam-root"
-mkdir -p "$HOME/.local/share/SLSsteam/path" "$HOME/.steam" "$BIN_DIR" "$STEAM_ROOT"
+mkdir -p "$HOME/.local/share/SteamTools/path" "$HOME/.steam" "$BIN_DIR" "$STEAM_ROOT"
 printf '#!/bin/sh\nprintf "DATA-STEAMSH %%s\\n" "$*"\n' > "$STEAM_ROOT/steam.sh"
 chmod 0755 "$STEAM_ROOT/steam.sh"
 ln -s "$STEAM_ROOT" "$HOME/.steam/steam"
@@ -75,13 +75,13 @@ write_valve_launcher "$BIN_DIR/steam"
 
 # Wrapper stub that behaves like the real one: an explicit SLSM_STEAM_BIN wins
 # and is exec'd, so argv[0] is exactly what the shim handed over.
-cat > "$HOME/.local/share/SLSsteam/path/steam" <<'W'
+cat > "$HOME/.local/share/SteamTools/path/steam" <<'W'
 #!/bin/sh
 exec "${SLSM_STEAM_BIN:?no SLSM_STEAM_BIN}" "$@"
 W
-chmod 0755 "$HOME/.local/share/SLSsteam/path/steam"
+chmod 0755 "$HOME/.local/share/SteamTools/path/steam"
 
-LS_SLSDIR="$HOME/.local/share/SLSsteam"
+LS_SLSDIR="$HOME/.local/share/SteamTools"
 LS_BACKUP_ROOT="$LS_SLSDIR/system-launcher-backup"
 LS_LAUNCHER_DIRS=("$BIN_DIR")
 LS_STEAM_ROOT="$STEAM_ROOT"
@@ -100,10 +100,10 @@ check "shim forwards the launcher arguments" "VALVE-LAUNCHER -silent" \
 
 # Same requirement without the wrapper: the shim's own fallback execs the
 # captured original directly.
-mv "$HOME/.local/share/SLSsteam/path/steam" "$TMP/wrapper-away"
+mv "$HOME/.local/share/SteamTools/path/steam" "$TMP/wrapper-away"
 check "shim fallback without the wrapper reaches the real launcher" "VALVE-LAUNCHER" \
 	"$(sh "$BIN_DIR/steam" 2>&1 | cut -d' ' -f1)"
-mv "$TMP/wrapper-away" "$HOME/.local/share/SLSsteam/path/steam"
+mv "$TMP/wrapper-away" "$HOME/.local/share/SteamTools/path/steam"
 
 # A missing alias must be recreated by the shim itself: the alias lives in the
 # user's own tree, so an older install or a partial restore is self-healing and
@@ -123,17 +123,17 @@ if [ "$(id -u)" -eq 0 ]; then
 	printf 'ok   - unobtainable-alias fallback skipped under root\n'
 	PASS=$((PASS+1))
 else
-	rm -f "$ALIAS" "$HOME/.local/share/SLSsteam/path/steam"
+	rm -f "$ALIAS" "$HOME/.local/share/SteamTools/path/steam"
 	chmod a-w "$ALIAS_DIR"
 	check "shim that cannot obtain a name-safe original uses steam.sh" "DATA-STEAMSH" \
 		"$(sh "$BIN_DIR/steam" 2>&1 | cut -d' ' -f1)"
 	chmod u+w "$ALIAS_DIR"
 fi
-cat > "$HOME/.local/share/SLSsteam/path/steam" <<'W'
+cat > "$HOME/.local/share/SteamTools/path/steam" <<'W'
 #!/bin/sh
 exec "${SLSM_STEAM_BIN:?no SLSM_STEAM_BIN}" "$@"
 W
-chmod 0755 "$HOME/.local/share/SLSsteam/path/steam"
+chmod 0755 "$HOME/.local/share/SteamTools/path/steam"
 ls_refresh_backup_alias "$(ls_backup_path "$BIN_DIR/steam")" >/dev/null 2>&1 || true
 
 # Restoration must put the genuine launcher back and clean the alias up.
@@ -160,11 +160,11 @@ FN="$(awk '
 W_HOME="$TMP/wrapper-home"
 export HOME="$W_HOME"
 export XDG_STATE_HOME="$W_HOME/.local/state"
-W_SLSDIR="$W_HOME/.local/share/SLSsteam"
+W_SLSDIR="$W_HOME/.local/share/SteamTools"
 W_STEAM_ROOT="$W_HOME/steam-root"
 W_BACKUP="$W_SLSDIR/system-launcher-backup/usr/bin/steam.orig"
 mkdir -p "$W_SLSDIR" "$W_HOME/.steam" "$W_STEAM_ROOT" "$(dirname "$W_BACKUP")"
-printf 'so'  > "$W_SLSDIR/SLSsteam.so"
+printf 'so'  > "$W_SLSDIR/SteamTools.so"
 printf 'inj' > "$W_SLSDIR/library-inject.so"
 printf '#!/bin/sh\nprintf "WRAPPER-STEAMSH %%s\\n" "$*"\n' > "$W_STEAM_ROOT/steam.sh"
 chmod 0755 "$W_STEAM_ROOT/steam.sh"

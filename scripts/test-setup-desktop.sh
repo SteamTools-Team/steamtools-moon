@@ -18,11 +18,11 @@ ck "wrapper body re-asserts coverage each launch (--user)" \
 ck "immutable distros run --user only (no system patch attempt)" \
    "$(grep -q 'is_immutable_distro' "$HERE/setup.sh" && echo yes || echo no)"
 ck "setup creates the central desktop-backup directory" \
-   "$(grep -q 'SLSsteam/backup\|SLSDIR/backup' "$HERE/setup.sh" && echo yes || echo no)"
+   "$(grep -q 'SteamTools/backup\|SLSDIR/backup' "$HERE/setup.sh" && echo yes || echo no)"
 ck "setup invokes legacy-backup migration before desktop repatch" \
    "$(grep -q 'dc_migrate_legacy_backups' "$HERE/setup.sh" && echo yes || echo no)"
 ck "desktop helper no longer assigns adjacent backups" \
-   "$(! grep -q 'bak="\$f.slssteam-backup"' "$HERE/tools/desktop-coverage.lib.sh" && echo yes || echo no)"
+   "$(! grep -q 'bak="\$f.steamtools-backup"' "$HERE/tools/desktop-coverage.lib.sh" && echo yes || echo no)"
 ck "immutable setup skips the system desktop database refresh" \
    "$(grep -q '\[ "\$system_desktop_changed" = 1 \].*command -v sudo' "$HERE/setup.sh" && echo yes || echo no)"
 
@@ -39,7 +39,7 @@ ck "mandatory user reconciliation precedes sudo attempt" \
 ck "sudo denial is warning-only rather than installation abort" \
    "$(awk '/if ! sudo -v/{inblock=1} inblock && /exit 1/{bad=1} inblock && /^\tfi/{inblock=0} END{print bad?"no":"yes"}' "$HERE/setup.sh")"
 ck "wrapper prefers guardian service and retains CLI fallback" \
-   "$(grep -q 'is-enabled slsteam-desktop-guardian.path' "$HERE/setup.sh" && grep -q 'start slsteam-desktop-guardian.service' "$HERE/setup.sh" && grep -q 'ensure-desktop-coverage.sh" --user' "$HERE/setup.sh" && echo yes || echo no)"
+   "$(grep -q 'is-enabled steamtools-desktop-guardian.path' "$HERE/setup.sh" && grep -q 'start steamtools-desktop-guardian.service' "$HERE/setup.sh" && grep -q 'ensure-desktop-coverage.sh" --user' "$HERE/setup.sh" && echo yes || echo no)"
 ck "uninstall removes guardian state before desktop restoration" \
    "$(awk '/dgu_remove_autostart_dropins/{d=NR} /dc_restore_all/{r=NR} END{print (d && r && d<r)?"yes":"no"}' "$HERE/setup.sh")"
 ck "uninstall warns when system restore is deferred" \
@@ -48,7 +48,7 @@ ck "uninstall warns when system restore is deferred" \
 ck "guardian reconciliation failure does not abort unit installation" \
    "$(awk '/dc_guardian_run/{seen=1} seen && /dgu_install_units/{done=1} seen && !done && /return 1/{bad=1} END{print bad?"no":"yes"}' "$HERE/setup.sh")"
 ck "setup verifies the guardian actually activated (is-enabled) and warns" \
-   "$(awk '/setup_path_and_desktop\(\)/{f=1} f && /is-enabled slsteam-desktop-guardian.path/{a=1} f && /Cold-boot/{w=1} /^}/{if(f)exit} END{print (a&&w)?"yes":"no"}' "$HERE/setup.sh")"
+   "$(awk '/setup_path_and_desktop\(\)/{f=1} f && /is-enabled steamtools-desktop-guardian.path/{a=1} f && /Cold-boot/{w=1} /^}/{if(f)exit} END{print (a&&w)?"yes":"no"}' "$HERE/setup.sh")"
 ck "sudo-denied warning explains per-user coverage still applies" \
    "$(grep -q 'system-wide Steam entry stays unpatched' "$HERE/setup.sh" && grep -q 'per-user entry' "$HERE/setup.sh" && echo yes || echo no)"
 ck "successful sudo fallback propagates its privilege prefix" \
@@ -108,9 +108,9 @@ trap 'rm -rf "$SETUP_TMP"' EXIT
 SETUP_HOME="$SETUP_TMP/home"
 SETUP_BIN="$SETUP_TMP/bin"
 SETUP_OS_RELEASE="$SETUP_TMP/os-release"
-mkdir -p "$SETUP_HOME/.local/share/SLSsteam" "$SETUP_BIN"
+mkdir -p "$SETUP_HOME/.local/share/SteamTools" "$SETUP_BIN"
 printf 'ID=steamos\n' > "$SETUP_OS_RELEASE"
-printf '#!/bin/sh\n# slsteam-moon system launcher shim\nexec /broken/immutable-setup\n' > "$SETUP_BIN/steam"
+printf '#!/bin/sh\n# steamtools-moon system launcher shim\nexec /broken/immutable-setup\n' > "$SETUP_BIN/steam"
 chmod 0755 "$SETUP_BIN/steam"
 SETUP_IMMUTABLE_STATE="$(
   HOME="$SETUP_HOME" \
@@ -134,11 +134,11 @@ MISMATCH_TMP="$(mktemp -d)"
 MISMATCH_HOME="$MISMATCH_TMP/home"
 MISMATCH_BIN="$MISMATCH_TMP/usr/bin"
 MISMATCH_OS_RELEASE="$MISMATCH_TMP/os-release"
-MISMATCH_BACKUP_ROOT="$MISMATCH_HOME/.local/share/SLSsteam/system-launcher-backup"
+MISMATCH_BACKUP_ROOT="$MISMATCH_HOME/.local/share/SteamTools/system-launcher-backup"
 MISMATCH_BACKUP="$MISMATCH_BACKUP_ROOT/${MISMATCH_BIN#/}/steam.orig"
-mkdir -p "$MISMATCH_BIN" "$(dirname "$MISMATCH_BACKUP")" "$MISMATCH_HOME/.local/share/SLSsteam"
+mkdir -p "$MISMATCH_BIN" "$(dirname "$MISMATCH_BACKUP")" "$MISMATCH_HOME/.local/share/SteamTools"
 printf 'ID=ubuntu\n' > "$MISMATCH_OS_RELEASE"
-printf '#!/bin/sh\n# slsteam-moon system launcher shim\nSLSM_ORIG="%s"\nexec /broken/mismatch\n' \
+printf '#!/bin/sh\n# steamtools-moon system launcher shim\nSLSM_ORIG="%s"\nexec /broken/mismatch\n' \
   "$MISMATCH_BACKUP_ROOT/wrong.orig" > "$MISMATCH_BIN/steam"
 printf '#!/bin/sh\nprintf "MISMATCH-BACKUP\\n"\n' > "$MISMATCH_BACKUP"
 chmod 0755 "$MISMATCH_BIN/steam" "$MISMATCH_BACKUP"

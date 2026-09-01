@@ -18,7 +18,7 @@
 namespace SLSAPI
 {
 	// Resolved at init() from $XDG_RUNTIME_DIR (or $HOME as a fallback). This
-	// used to be the fixed "/tmp/SLSsteam.API": a control channel that installs
+	// used to be the fixed "/tmp/SteamTools.API": a control channel that installs
 	// apps, living in a directory every local user can write to, with no access
 	// control of its own. It is now a 0600 file inside a 0700 per-user directory.
 	std::string contractPath;
@@ -167,5 +167,5 @@ void SLSAPI::init()
 	watcher->addFile(path);
 	watcher->start();
 
-	g_pLog->debug("SLSsteam API initialized at %s\n", path);
+	g_pLog->debug("SteamTools API initialized at %s\n", path);
 }

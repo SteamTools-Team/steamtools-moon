@@ -1,15 +1,15 @@
 #!/bin/bash
 # Isolation harness for the Pop!_OS crash investigation.
 #
-# Toggles SLSsteam (LD_PRELOAD wrapper) and Millennium (libXtst.so.6
+# Toggles SteamTools (LD_PRELOAD wrapper) and Millennium (libXtst.so.6
 # bootstrap symlink) independently so we can see which component — or
 # their combination — triggers the SIGABRT at store-load on Pop!_OS.
 #
 # Usage:
-#   ./test-isolation.sh sls-only      # SLSsteam, no Millennium
-#   ./test-isolation.sh mln-only      # Millennium, no SLSsteam
+#   ./test-isolation.sh sls-only      # SteamTools, no Millennium
+#   ./test-isolation.sh mln-only      # Millennium, no SteamTools
 #   ./test-isolation.sh neither       # vanilla Steam
-#   ./test-isolation.sh both          # restore normal (SLSsteam + Millennium)
+#   ./test-isolation.sh both          # restore normal (SteamTools + Millennium)
 #   ./test-isolation.sh status        # show current state
 #
 # It only flips the Millennium libXtst symlink and chooses the launch
@@ -22,7 +22,7 @@ STEAM64="$HOME/.steam/debian-installation/ubuntu12_64"
 XTST_LINK="$STEAM64/libXtst.so.6"
 MLN_BOOT="/usr/lib/millennium/libmillennium_bootstrap_hhx64.so"
 SYS_XTST="/usr/lib/x86_64-linux-gnu/libXtst.so.6"
-SLS_WRAPPER="$HOME/.local/share/SLSsteam/path/steam"
+SLS_WRAPPER="$HOME/.local/share/SteamTools/path/steam"
 SAVED_LINK="$STEAM64/.libXtst.so.6.millennium"   # remembers Millennium target
 
 millennium_on() {
@@ -37,7 +37,7 @@ millennium_off() {
 
 show_status() {
 	echo "libXtst.so.6 -> $(readlink "$XTST_LINK")"
-	echo "SLSsteam wrapper: $SLS_WRAPPER"
+	echo "SteamTools wrapper: $SLS_WRAPPER"
 }
 
 case "${1:-}" in

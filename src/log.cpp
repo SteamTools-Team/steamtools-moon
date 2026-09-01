@@ -57,7 +57,7 @@ void CLog::notifyUser(UserMsg msg, const std::string& detail)
 	// Always record that we surfaced this to the user — at info level, so it
 	// lands in the file (never a popup) right next to the raw diagnostic the
 	// call site logged. Helps correlate "what the user saw" with "what went
-	// wrong" when reading ~/.SLSsteam.log.
+	// wrong" when reading ~/.SteamTools.log.
 	info("notifyUser: %s\n", body.c_str());
 
 	// Gate exactly like the old popup path: respect the global Notifications
@@ -109,12 +109,12 @@ void CLog::notifyUser(UserMsg msg, const std::string& detail)
 	}
 
 	const std::string cmd =
-		Notify::buildCommandRaw("SLSsteam-moon", shown, timeoutMs, "normal");
+		Notify::buildCommandRaw("SteamTools-moon", shown, timeoutMs, "normal");
 	// Gamepad UI has no freedesktop notification surface. Hand the same event
 	// to Lumen, which renders it through Steam's own toast system only while
 	// Big Picture/Gamepad UI is active. Desktop keeps notify-send below as the
 	// visible path; the sidecar silently drains the duplicate event there.
-	(void)Notify::enqueueGamepadEventForUser("SLSsteam-moon", shown, timeoutMs);
+	(void)Notify::enqueueGamepadEventForUser("SteamTools-moon", shown, timeoutMs);
 	const int rc = system(cmd.c_str());
 	(void)rc; // best-effort popup; nothing actionable if notify-send is absent
 }
@@ -125,7 +125,7 @@ CLog* CLog::createDefaultLog()
 	if (home)
 	{
 		std::stringstream ss;
-		ss << home << "/.SLSsteam.log";
+		ss << home << "/.SteamTools.log";
 
 		return new CLog(ss.str().c_str());
 	}

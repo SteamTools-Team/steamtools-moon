@@ -254,7 +254,7 @@ namespace
 			(void)setpgid(0, 0);
 			// Child.  Set STEAMLESS_HOME, exec the helper.
 			setenv("STEAMLESS_HOME", g_steamlessHome.c_str(), 1);
-			// QUIET=1 keeps the SLSsteam log clean of Steamless's
+			// QUIET=1 keeps the SteamTools log clean of Steamless's
 			// banner; the helper still logs its own one-liner per
 			// step plus errors via stderr.
 			setenv("QUIET", "1", 1);
@@ -324,19 +324,19 @@ void setup(const char* installRoot)
 
 	// Helper script and binary kit live under tools/. Probe two
 	// locations for both:
-	//   1. Next to SLSsteam.so (dev tree, bundled releases).
-	//   2. User-local mirror under ~/.local/share/SLSsteam/ for
+	//   1. Next to SteamTools.so (dev tree, bundled releases).
+	//   2. User-local mirror under ~/.local/share/SteamTools/ for
 	//      system-packaged installs where the .so is read-only.
 	const std::filesystem::path scriptCandidates[] = {
 		root / "tools" / "steamstub-bypass" / "run-steamless.sh",
 		std::filesystem::path(std::getenv("HOME") ? std::getenv("HOME") : "/")
-			/ ".local" / "share" / "SLSsteam" / "steamstub-bypass"
+			/ ".local" / "share" / "SteamTools" / "steamstub-bypass"
 			/ "run-steamless.sh",
 	};
 	const std::filesystem::path binCandidates[] = {
 		root / "tools" / "steamless-bin",
 		std::filesystem::path(std::getenv("HOME") ? std::getenv("HOME") : "/")
-			/ ".local" / "share" / "SLSsteam" / "steamless-bin",
+			/ ".local" / "share" / "SteamTools" / "steamless-bin",
 	};
 
 	bool haveScript = false;

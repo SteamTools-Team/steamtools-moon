@@ -52,7 +52,7 @@ int main()
 	          == "unzip, gzip, timeout",
 	      "all missing tools share one diagnostic");
 
-	char rootTemplate[] = "/tmp/slsteam-runtime-deps-XXXXXX";
+	char rootTemplate[] = "/tmp/steamtools-runtime-deps-XXXXXX";
 	char* rootPath = mkdtemp(rootTemplate);
 	if (rootPath == nullptr)
 	{

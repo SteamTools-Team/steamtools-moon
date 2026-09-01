@@ -1,12 +1,12 @@
 #pragma once
-// Private per-user location for SLSsteam's runtime contracts (the API command
+// Private per-user location for SteamTools's runtime contracts (the API command
 // file, the one-shot load lock).
 //
 // Both used to live in /tmp under a fully predictable name:
-//   /tmp/SLSsteam.API          — a control channel with no access control at
+//   /tmp/SteamTools.API          — a control channel with no access control at
 //                                all. Any local process that can write to it
 //                                submits `install|<appid>|<library>`.
-//   /tmp/.slssteam.load.<pid>  — the "only hook once per process" lock, opened
+//   /tmp/.steamtools.load.<pid>  — the "only hook once per process" lock, opened
 //                                without O_EXCL or O_NOFOLLOW. A process that
 //                                pre-creates it and holds an exclusive flock
 //                                makes our flock(LOCK_NB) fail, and the old code
@@ -27,7 +27,7 @@
 namespace RuntimeDir
 {
 	// Relative directory used under whichever base is chosen.
-	inline const char* kSubdir = "SLSsteam";
+	inline const char* kSubdir = "SteamTools";
 
 	// resolveBase(xdgRuntimeDir, home) -> the directory that should hold our
 	// private files, or "" when neither input is usable.

@@ -1,9 +1,9 @@
-# Building slsteam-moon
+# Building steamtools-moon
 
-slsteam-moon is a 32-bit shared library that hooks into Steam through
+steamtools-moon is a 32-bit shared library that hooks into Steam through
 `LD_AUDIT`. The build produces two artefacts:
 
-- `bin/SLSsteam.so` — main hook library
+- `bin/SteamTools.so` — main hook library
 - `bin/library-inject.so` — small audit helper that redirects libcurl
   loading to the system copy
 
@@ -17,7 +17,7 @@ slsteam-moon is a 32-bit shared library that hooks into Steam through
 | Produce the release zip               | `scripts/release.sh`             |
 | Install onto your own Steam           | `make install`                   |
 
-[rel]: https://github.com/swwayps/slsteam-moon/releases/latest
+[rel]: https://github.com/AceSLS/SLSsteam-Team/steamtools-moon/releases/latest
 
 `make` on its own is equivalent to `scripts/build.sh --host`.
 
@@ -57,7 +57,7 @@ resulting binary works on any distro with **glibc ≥ 2.34**: Ubuntu
 This is what release builds use. Requires Podman (rootless, preferred)
 or Docker installed; the script picks whichever it finds.
 
-The container image (`slsteam-moon-builder`) is built from
+The container image (`steamtools-moon-builder`) is built from
 `scripts/Dockerfile` on first run; subsequent runs reuse the cache.
 
 ### Cross-distro reach
@@ -76,13 +76,13 @@ scripts/release.sh --version 2.1      # explicit version
 ```
 
 Equivalent to `scripts/build.sh --portable` followed by
-`scripts/package.sh`. The output is `dist/slsteam-moon-linux-<ver>.zip`,
-matching the layout consumers (and `luatools-moon/install.sh`)
+`scripts/package.sh`. The output is `dist/steamtools-moon-linux-<ver>.zip`,
+matching the layout consumers (and `steamtools-moon/install.sh`)
 expect:
 
 ```
-slsteam-moon-<ver>/
-  bin/{SLSsteam.so, library-inject.so}
+steamtools-moon-<ver>/
+  bin/{SteamTools.so, library-inject.so}
   setup.sh
   res/config.yaml
   docs/LICENSE/
@@ -92,7 +92,7 @@ slsteam-moon-<ver>/
 Upload to the GitHub release with `gh`:
 
 ```
-gh release upload vX.Y dist/slsteam-moon-linux-X.Y.zip --clobber
+gh release upload vX.Y dist/steamtools-moon-linux-X.Y.zip --clobber
 ```
 
 ## Verifying a build
@@ -107,8 +107,8 @@ current host. Useful before publishing a release.
 You can also check by hand:
 
 ```
-objdump -T bin/SLSsteam.so | grep GLIBC | sort -V | tail -5
-ldd bin/SLSsteam.so
+objdump -T bin/SteamTools.so | grep GLIBC | sort -V | tail -5
+ldd bin/SteamTools.so
 ```
 
 ## Troubleshooting
@@ -116,7 +116,7 @@ ldd bin/SLSsteam.so
 **`wrong ELF class: ELFCLASS32`** — you're trying to inject into a
 64-bit Steam process. The Steam Linux client runs both `steam`
 (launcher, 64-bit) and `ubuntu12_32/steam` (real client, 32-bit).
-slsteam-moon only hooks the 32-bit client; `setup.sh` handles this.
+steamtools-moon only hooks the 32-bit client; `setup.sh` handles this.
 
 **`GLIBC_X.YZ not found` at Steam launch** — the binary was built on a
 newer system than the user's. Rebuild with `scripts/build.sh --portable`,

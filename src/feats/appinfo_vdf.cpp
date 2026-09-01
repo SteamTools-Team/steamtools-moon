@@ -844,12 +844,12 @@ bool loadCachedBuffer(const std::string& metaPath, uint32_t expectedAppId,
 
 std::string appInfoLockPath(const std::string& path)
 {
-	return path + ".slssteam.lock";
+	return path + ".steamtools.lock";
 }
 
 std::string rollbackPath(const std::string& path)
 {
-	return path + ".slssteam-previous";
+	return path + ".steamtools-previous";
 }
 
 bool hasV41Magic(const std::string& path)
@@ -863,7 +863,7 @@ bool hasV41Magic(const std::string& path)
 
 std::string recoveryPath(const std::string& path)
 {
-	return path + ".slssteam-corrupt." +
+	return path + ".steamtools-corrupt." +
 		std::to_string(static_cast<long long>(std::time(nullptr))) + "." +
 		std::to_string(static_cast<long long>(::getpid()));
 }
@@ -972,7 +972,7 @@ bool publishCheckedIfUnchanged(const std::string& path,
 		return false;
 	}
 	static std::atomic<unsigned long> validationSequence{0};
-	const std::string validationPath = path + ".slssteam-validate." +
+	const std::string validationPath = path + ".steamtools-validate." +
 		std::to_string(static_cast<long long>(::getpid())) + "." +
 		std::to_string(validationSequence.fetch_add(1, std::memory_order_relaxed));
 	if (!AtomicFile::write(validationPath,

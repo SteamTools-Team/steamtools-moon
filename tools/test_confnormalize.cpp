@@ -1,7 +1,7 @@
 // Regression guard for the "malformed AdditionalApps indentation bricks Steam"
 // bug.
 //
-// SYMPTOM: LuaTools adds a game; the SLSsteam config.yaml ends up with a block
+// SYMPTOM: LuaTools adds a game; the SteamTools config.yaml ends up with a block
 // sequence whose items have INCONSISTENT indentation, e.g.
 //
 //     AdditionalApps:

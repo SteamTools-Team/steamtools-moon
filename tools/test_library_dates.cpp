@@ -41,7 +41,7 @@ std::string read(const fs::path& path)
 
 int main()
 {
-	char pattern[] = "/tmp/slsteam_library_dates_XXXXXX";
+	char pattern[] = "/tmp/steamtools_library_dates_XXXXXX";
 	const char* temp = ::mkdtemp(pattern);
 	if (!temp) return 2;
 	const fs::path root(temp);

@@ -45,7 +45,7 @@ uint64_t StatsPolicy::localEpoch(uint32_t app, uint32_t id, bool refresh)
 	return state.localEpoch(id, app);
 }
 
-extern "C" uint64_t slsteam_local_stats_epoch_v1(uint32_t app, uint32_t id,
+extern "C" uint64_t steamtools_local_stats_epoch_v1(uint32_t app, uint32_t id,
                                                 uint32_t refresh) noexcept
 {
 	try { return StatsPolicy::localEpoch(app, id, refresh == 1); }

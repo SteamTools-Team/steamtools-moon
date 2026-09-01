@@ -261,22 +261,22 @@ namespace OwnerWork
 	void init()
 	{
 		bool rejected = false;
-		const bool on = parseQueueEnabled(std::getenv("SLSSTEAM_OWNER_QUEUE"), true,
+		const bool on = parseQueueEnabled(std::getenv("STEAMTOOLS_OWNER_QUEUE"), true,
 		                                  &rejected);
 		if (rejected)
 		{
-			g_pLog->warn("OwnerWork: ignoring unrecognised SLSSTEAM_OWNER_QUEUE "
+			g_pLog->warn("OwnerWork: ignoring unrecognised STEAMTOOLS_OWNER_QUEUE "
 			             "(expected on/off); queue stays enabled\n");
 		}
 		g_queueEnabled.store(on, std::memory_order_relaxed);
 
 		rejected = false;
 		const unsigned int stale =
-			parseBoundedMs(std::getenv("SLSSTEAM_OWNER_QUEUE_MAX_STALE_MS"),
+			parseBoundedMs(std::getenv("STEAMTOOLS_OWNER_QUEUE_MAX_STALE_MS"),
 			               kDefaultMaxStaleMs, kMaxMaxStaleMs, &rejected);
 		if (rejected)
 		{
-			g_pLog->warn("OwnerWork: ignoring invalid SLSSTEAM_OWNER_QUEUE_MAX_STALE_MS "
+			g_pLog->warn("OwnerWork: ignoring invalid STEAMTOOLS_OWNER_QUEUE_MAX_STALE_MS "
 			             "(expected 0-%u)\n", kMaxMaxStaleMs);
 		}
 		g_maxStaleMs.store(stale, std::memory_order_relaxed);
@@ -284,11 +284,11 @@ namespace OwnerWork
 		// The blocking handoff this replaced had its own knob. Measurements
 		// showed the wait always expired, so it is gone; say so instead of
 		// silently ignoring a setting someone may still have in a wrapper.
-		if (std::getenv("SLSSTEAM_OWNER_QUEUE_DEADLINE_MS") != nullptr)
+		if (std::getenv("STEAMTOOLS_OWNER_QUEUE_DEADLINE_MS") != nullptr)
 		{
-			g_pLog->warn("OwnerWork: SLSSTEAM_OWNER_QUEUE_DEADLINE_MS is obsolete and "
+			g_pLog->warn("OwnerWork: STEAMTOOLS_OWNER_QUEUE_DEADLINE_MS is obsolete and "
 			             "ignored (the handoff no longer blocks); use "
-			             "SLSSTEAM_OWNER_QUEUE=off or SLSSTEAM_OWNER_QUEUE_MAX_STALE_MS\n");
+			             "STEAMTOOLS_OWNER_QUEUE=off or STEAMTOOLS_OWNER_QUEUE_MAX_STALE_MS\n");
 		}
 
 		if (!on)

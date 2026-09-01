@@ -11,7 +11,7 @@
 int main()
 {
 	const std::string path =
-		"/tmp/slssteam-test-atomic-file." + std::to_string(getpid());
+		"/tmp/steamtools-test-atomic-file." + std::to_string(getpid());
 	std::error_code ec;
 	std::filesystem::remove(path, ec);
 
@@ -77,13 +77,13 @@ int main()
 			std::filesystem::path(path).parent_path()))
 	{
 		const auto name = entry.path().filename().string();
-		if (name.find(".slssteam-conditional-conflict.") != std::string::npos)
+		if (name.find(".steamtools-conditional-conflict.") != std::string::npos)
 		{
 			conflictPreserved = true;
 			std::filesystem::remove(entry.path(), ec);
 			continue;
 		}
-		assert(name.find("slssteam-test-atomic-file.") == std::string::npos
+		assert(name.find("steamtools-test-atomic-file.") == std::string::npos
 		       || entry.path() == path);
 	}
 	assert(conflictPreserved);

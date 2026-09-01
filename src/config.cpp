@@ -85,7 +85,7 @@ namespace
 
 std::string CConfig::getDir()
 {
-	return ConfigPath::slsteamConfigDir(
+	return ConfigPath::steamtoolsConfigDir(
 	    std::getenv("XDG_CONFIG_HOME"), std::getenv("HOME"));
 }
 

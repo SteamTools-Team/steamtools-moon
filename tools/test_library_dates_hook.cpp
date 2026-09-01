@@ -57,7 +57,7 @@ int main()
 	      "a managed app without a recorded date never inherits package 0's date");
 	check(checkDate(0, 1096588800).purchaseTime == 0,
 	      "the reported 2004 package date is also removed");
-	char pattern[] = "/tmp/slsteam_library_dates_hook_XXXXXX";
+	char pattern[] = "/tmp/steamtools_library_dates_hook_XXXXXX";
 	const char* temp = ::mkdtemp(pattern);
 	if (!temp) return 2;
 	std::string error;

@@ -3,7 +3,7 @@
 # wrapper/Lumen (--user), setup (--system), and the user service (--guardian).
 # Legacy --user calls remain best-effort; guardian failures are explicit.
 SELF_DIR="$(cd "$(dirname "$0")" && pwd)"
-: "${WRAPPER:=$HOME/.local/share/SLSsteam/path/steam}"
+: "${WRAPPER:=$HOME/.local/share/SteamTools/path/steam}"
 # Prefer the shared launcher eligibility check when this helper was installed
 # with it. Tests/diagnostics may inject DC_STEAM_ROOT or LS_STEAM_ROOT; without
 # an override, production still requires Valve's canonical Steam symlink.

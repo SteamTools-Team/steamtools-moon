@@ -81,7 +81,7 @@ int main()
 	      "key replacement alters the local input fingerprint");
 
 	const fs::path tempDir = fs::temp_directory_path() /
-		("slsteam_provision_terminal_" + std::to_string(::getpid()));
+		("steamtools_provision_terminal_" + std::to_string(::getpid()));
 	std::error_code ec;
 	fs::remove_all(tempDir, ec);
 	fs::create_directories(tempDir, ec);

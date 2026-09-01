@@ -1,22 +1,22 @@
 # desktop-coverage.lib.sh — pure, sourceable helpers to find and patch every
-# *steam*.desktop so it launches through the slsteam-moon wrapper, and to blind
+# *steam*.desktop so it launches through the steamtools-moon wrapper, and to blind
 # those patches against Steam's restore. No top-level side effects: only
 # function defs + defaults, so it is safe to source from setup.sh, the wrapper,
 # and tests. Callers set DC_TAG and WRAPPER (or accept the defaults below).
-: "${DC_TAG:=X-SLSteamMoon-Patched=true}"
+: "${DC_TAG:=X-SteamToolsMoon-Patched=true}"
 # Marks an entry we CREATED (a seeded autostart override) rather than patched in
 # place. Such files get no backup and are DELETED (not restored) on uninstall,
 # because the user never had them.
-: "${DC_SEED_TAG:=X-SLSteamMoon-Seeded=true}"
+: "${DC_SEED_TAG:=X-SteamToolsMoon-Seeded=true}"
 # Marks a minimal desktop entry created before Steam's data root exists. It is
 # intentionally tagged for ownership but remains a direct distro-installer
 # launcher until bootstrap is confirmed.
-: "${DC_PREBOOTSTRAP_TAG:=X-SLSteamMoon-Prebootstrap=true}"
+: "${DC_PREBOOTSTRAP_TAG:=X-SteamToolsMoon-Prebootstrap=true}"
 
 dc_is_prebootstrap_seed() {
 	[ -f "$1" ] && grep -qxF "$DC_PREBOOTSTRAP_TAG" "$1" 2>/dev/null
 }
-: "${WRAPPER:=$HOME/.local/share/SLSsteam/path/steam}"
+: "${WRAPPER:=$HOME/.local/share/SteamTools/path/steam}"
 : "${DC_HOME:=$HOME}"
 
 # Effective XDG roots. DC_HOME is injectable so callers and tests can operate on
@@ -71,7 +71,7 @@ dc_autostart_dirs() {
 	dc_colon_dirs "${XDG_CONFIG_DIRS:-}" '/etc/xdg' autostart
 }
 
-# Empty means "$DC_HOME/.local/share/SLSsteam/backup". Tests may override this
+# Empty means "$DC_HOME/.local/share/SteamTools/backup". Tests may override this
 # without changing HOME. The mirrored absolute source path below avoids name
 # collisions between (for example) user and system steam.desktop files.
 : "${DC_BACKUP_ROOT:=}"
@@ -80,7 +80,7 @@ dc_autostart_dirs() {
 # the standalone desktop-coverage CLI can safely reconcile a stale policy.
 # Production setup sources the shim library too; tests may override the array
 # and backup root directly.
-: "${DC_LAUNCHER_TAG:=# slsteam-moon system launcher shim}"
+: "${DC_LAUNCHER_TAG:=# steamtools-moon system launcher shim}"
 : "${DC_LAUNCHER_BACKUP_ROOT:=}"
 
 dc_launcher_dirs() {
@@ -99,7 +99,7 @@ dc_launcher_dirs() {
 }
 
 dc_launcher_backup_root() {
-	printf '%s\n' "${DC_LAUNCHER_BACKUP_ROOT:-${LS_BACKUP_ROOT:-$DC_HOME/.local/share/SLSsteam/system-launcher-backup}}"
+	printf '%s\n' "${DC_LAUNCHER_BACKUP_ROOT:-${LS_BACKUP_ROOT:-$DC_HOME/.local/share/SteamTools/system-launcher-backup}}"
 }
 
 dc_launcher_backup_path() {
@@ -172,11 +172,11 @@ dc_launcher_coverage_active() {
 }
 
 dc_backup_root() {
-	printf '%s\n' "${DC_BACKUP_ROOT:-$DC_HOME/.local/share/SLSsteam/backup}"
+	printf '%s\n' "${DC_BACKUP_ROOT:-$DC_HOME/.local/share/SteamTools/backup}"
 }
 
 # dc_backup_path <original> — central backup path, mirroring the absolute
-# original underneath SLSsteam/backup.
+# original underneath SteamTools/backup.
 dc_backup_path() {
 	local f="$1" rel
 	case "$f" in /*) rel="${f#/}" ;; *) rel="$f" ;; esac
@@ -206,8 +206,8 @@ dc_migrate_legacy_file() {
 	local legacy="$1" S="${2:-}" original
 	[ -f "$legacy" ] || return 0
 	case "$legacy" in
-		*.slssteam-backup) original="${legacy%.slssteam-backup}" ;;
-		*.slsteam-bak)    original="${legacy%.slsteam-bak}" ;;
+		*.steamtools-backup) original="${legacy%.steamtools-backup}" ;;
+		*.steamtools-bak)    original="${legacy%.steamtools-bak}" ;;
 		*) return 0 ;;
 	esac
 	dc_store_backup "$legacy" "$original" "$S" || return 1
@@ -218,8 +218,8 @@ dc_migrate_legacy_dir() {
 	local dir="$1" S="${2:-}" legacy failed=0
 	[ -d "$dir" ] || return 0
 	for legacy in \
-		"$dir"/*steam*.desktop.slssteam-backup \
-		"$dir"/*steam*.desktop.slsteam-bak; do
+		"$dir"/*steam*.desktop.steamtools-backup \
+		"$dir"/*steam*.desktop.steamtools-bak; do
 		[ -f "$legacy" ] || continue
 		dc_migrate_legacy_file "$legacy" "$S" || failed=1
 	done
@@ -228,7 +228,7 @@ dc_migrate_legacy_dir() {
 
 # dc_migrate_legacy_backups [--user|--system] — runs BEFORE repatching. It also
 # catches the critical case where steam.desktop was deleted when autostart was
-# disabled but steam.desktop.slssteam-backup was left behind and executable by
+# disabled but steam.desktop.steamtools-backup was left behind and executable by
 # KDE/systemd's XDG autostart generator.
 dc_migrate_legacy_backups() {
 	local mode="${1:---user}" desktop failed=0
@@ -362,7 +362,7 @@ _dc_exec_scan() {
 				removed = 0; kept = 0; rebuilt = ""
 				for (i = 2; i < launcher; i++) {
 					if (decoded[i] ~ /^LD_AUDIT=/ &&
-						decoded[i] ~ /(SLSsteam|library-inject|libSLS)/) {
+						decoded[i] ~ /(SteamTools|library-inject|libSLS)/) {
 						removed = 1
 						continue
 					}
@@ -808,7 +808,7 @@ _dc_publish_application_shadow() {
 	local source="$1" target="$2" kind="$3" dir tmp tagged
 	dir="$(dirname "$target")"
 	mkdir -p "$dir" 2>/dev/null || return 1
-	tmp="$(mktemp "$dir/.slsteam-shadow.XXXXXX")" || return 1
+	tmp="$(mktemp "$dir/.steamtools-shadow.XXXXXX")" || return 1
 	if [ "$kind" = stub ]; then
 		cat > "$tmp" <<EOF
 [Desktop Entry]
@@ -952,7 +952,7 @@ dc_seed_autostart_override() {
 	fi
 	dc_patch_one "$user_as"
 	# Defensive cleanup for an interrupted older seeding implementation.
-	rm -f "$user_as.slssteam-backup" "$user_as.slsteam-bak" "$(dc_backup_path "$user_as")"
+	rm -f "$user_as.steamtools-backup" "$user_as.steamtools-bak" "$(dc_backup_path "$user_as")"
 }
 
 # Guardian commands are injectable so tests can observe lock/cache behavior.
@@ -1094,8 +1094,8 @@ dc_guardian_seed_application_shadows() {
 dc_guardian_migrate_dir() {
 	local dir="$1" legacy result
 	[ -d "$dir" ] || return 0
-	for legacy in "$dir"/*steam*.desktop.slssteam-backup \
-	              "$dir"/*steam*.desktop.slsteam-bak; do
+	for legacy in "$dir"/*steam*.desktop.steamtools-backup \
+	              "$dir"/*steam*.desktop.steamtools-bak; do
 		[ -f "$legacy" ] || continue
 		if dc_migrate_legacy_file "$legacy"; then result=0; else result=2; fi
 		dc_guardian_record_result other "$result"
@@ -1184,12 +1184,12 @@ dc_state_home() {
 # Coverage policy is deliberately tiny and fail-safe: only the two known values
 # are persisted, and every missing/invalid value falls back to the historical
 # desktop path. DC_POLICY_FILE is a fixture/diagnostic override; production
-# state lives beside the other slsteam-moon state under XDG_STATE_HOME.
+# state lives beside the other steamtools-moon state under XDG_STATE_HOME.
 dc_policy_path() {
 	if [ -n "${DC_POLICY_FILE:-}" ]; then
 		printf '%s\n' "$DC_POLICY_FILE"
 	else
-		printf '%s/slsteam-moon/coverage.policy\n' "$(dc_state_home)"
+		printf '%s/steamtools-moon/coverage.policy\n' "$(dc_state_home)"
 	fi
 }
 
@@ -1197,7 +1197,7 @@ dc_policy_status_path() {
 	if [ -n "${DC_POLICY_STATUS_FILE:-}" ]; then
 		printf '%s\n' "$DC_POLICY_STATUS_FILE"
 	else
-		printf '%s/.local/share/SLSsteam/coverage-policy.effective\n' "$DC_HOME"
+		printf '%s/.local/share/SteamTools/coverage-policy.effective\n' "$DC_HOME"
 	fi
 }
 
@@ -1263,7 +1263,7 @@ dc_forget_policy() {
 # pass. A fingerprint match means the inputs are identical, so the full pass
 # would be a no-op — it can never mask real drift:
 #   * each candidate directory's own mtime, so an added/removed/renamed entry
-#     invalidates (a new donor, a resurrected legacy .slssteam-backup, …);
+#     invalidates (a new donor, a resurrected legacy .steamtools-backup, …);
 #   * name + size + mtime + mode + type of every *.desktop in those directories,
 #     so ANY edit invalidates — a hand-broken launcher always changes its mtime
 #     and normally its size too, and a symlink appearing is a type change;
@@ -1282,7 +1282,7 @@ DC_FINGERPRINT_VERSION=2
 dc_fingerprint_path() {
 	local scope="${1:-user}"
 	printf '%s/coverage.fingerprint.%s\n' \
-		"${DC_FINGERPRINT_DIR:-$(dc_state_home)/slsteam-moon}" "$scope"
+		"${DC_FINGERPRINT_DIR:-$(dc_state_home)/steamtools-moon}" "$scope"
 }
 
 # Nanosecond mtimes when this coreutils supports them, whole seconds otherwise.
@@ -1321,8 +1321,8 @@ dc_coverage_fingerprint() {
 		fi
 		for dir in "${dirs[@]}"; do
 			files+=("$dir"/*.desktop \
-			        "$dir"/*steam*.desktop.slssteam-backup \
-			        "$dir"/*steam*.desktop.slsteam-bak)
+			        "$dir"/*steam*.desktop.steamtools-backup \
+			        "$dir"/*steam*.desktop.steamtools-bak)
 			named+=("$dir"/*steam*.desktop)
 		done
 		stat -c "d %n $time_format" -- "${dirs[@]}" 2>/dev/null | sort
@@ -1387,7 +1387,7 @@ dc_coverage_forget() {
 
 dc_guardian_write_summary() {
 	local dir log timestamp
-	dir="$(dc_state_home)/slsteam-moon"
+	dir="$(dc_state_home)/steamtools-moon"
 	log="$dir/guardian.log"
 	mkdir -p "$dir" 2>/dev/null || return 2
 	timestamp="$(date -u '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null)" || return 2
@@ -1402,7 +1402,7 @@ dc_guardian_write_summary() {
 # (and the tests) keep seeing the same six-counter shape as the last line.
 dc_guardian_write_cached_note() {
 	local dir log timestamp
-	dir="$(dc_state_home)/slsteam-moon"
+	dir="$(dc_state_home)/steamtools-moon"
 	log="$dir/guardian.log"
 	mkdir -p "$dir" 2>/dev/null || return 2
 	timestamp="$(date -u '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null)" || return 2
@@ -1416,7 +1416,7 @@ dc_guardian_run() {
 	local runtime uid lock result status=0
 	runtime="${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}"
 	uid="${UID:-$(id -u)}"
-	lock="${runtime%/}/slsteam-desktop-guardian-${uid}.lock"
+	lock="${runtime%/}/steamtools-desktop-guardian-${uid}.lock"
 	command -v "$DC_FLOCK" >/dev/null 2>&1 || return 2
 	exec 9>"$lock" 2>/dev/null || return 2
 	if ! "$DC_FLOCK" -n 9; then
@@ -1524,14 +1524,14 @@ dc_run() {
 dc_restore_one() {
 	local f="$1" S="${2:-}" bak
 	# Accept and immediately centralize both historical adjacent suffixes.
-	dc_migrate_legacy_file "$f.slssteam-backup" "$S" || true
-	dc_migrate_legacy_file "$f.slsteam-bak" "$S" || true
+	dc_migrate_legacy_file "$f.steamtools-backup" "$S" || true
+	dc_migrate_legacy_file "$f.steamtools-bak" "$S" || true
 	bak="$(dc_backup_path "$f")"
 	# A seeded override was created by us — the user never had it — so remove it
 	# (and any stray backup) rather than restoring a vanilla copy.
 	if [ -f "$f" ] && grep -qxF "$DC_SEED_TAG" "$f" 2>/dev/null; then
 		$S rm -f -- "$f" 2>/dev/null || return 1
-		rm -f -- "$bak" "$f.slssteam-backup" "$f.slsteam-bak" 2>/dev/null
+		rm -f -- "$bak" "$f.steamtools-backup" "$f.steamtools-bak" 2>/dev/null
 		return 0
 	fi
 	if [ -L "$f" ]; then

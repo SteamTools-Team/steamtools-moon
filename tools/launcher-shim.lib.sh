@@ -6,8 +6,8 @@
 #
 # Callers may override LS_* variables before sourcing this file. No top-level
 # command mutates the filesystem.
-: "${LS_TAG:=# slsteam-moon system launcher shim}"
-: "${LS_SLSDIR:=$HOME/.local/share/SLSsteam}"
+: "${LS_TAG:=# steamtools-moon system launcher shim}"
+: "${LS_SLSDIR:=$HOME/.local/share/SteamTools}"
 : "${LS_BACKUP_ROOT:=$LS_SLSDIR/system-launcher-backup}"
 : "${LS_SUDO:=}"
 
@@ -59,7 +59,7 @@ ls_is_our_shim() {
 }
 
 ls_is_injected_wrapper() {
-	local candidate="$1" wrapper="$HOME/.local/share/SLSsteam/path/steam"
+	local candidate="$1" wrapper="$HOME/.local/share/SteamTools/path/steam"
 	local resolved_candidate resolved_wrapper
 	resolved_candidate="$(readlink -f "$candidate" 2>/dev/null || true)"
 	resolved_wrapper="$(readlink -f "$wrapper" 2>/dev/null || true)"
@@ -228,7 +228,7 @@ ls_shim_content() {
 	cat <<EOF
 #!/bin/sh
 $LS_TAG
-# Managed by slsteam-moon. Run the uninstaller to restore the package launcher.
+# Managed by steamtools-moon. Run the uninstaller to restore the package launcher.
 #
 # TRUST NOTE. This script is root-owned and sits on the system PATH, but the
 # wrapper it delegates to lives in a user's home directory and is writable by
@@ -276,8 +276,8 @@ SLSM_HOME="\$SLSM_ENV_HOME"
 [ -n "\$SLSM_HOME" ] || SLSM_HOME="\$SLSM_PW_HOME"
 SLSM_WRAPPER=""
 if [ -n "\$SLSM_HOME" ] \\
-   && slsm_wrapper_trusted "\$SLSM_HOME/.local/share/SLSsteam/path/steam"; then
-	SLSM_WRAPPER="\$SLSM_HOME/.local/share/SLSsteam/path/steam"
+   && slsm_wrapper_trusted "\$SLSM_HOME/.local/share/SteamTools/path/steam"; then
+	SLSM_WRAPPER="\$SLSM_HOME/.local/share/SteamTools/path/steam"
 fi
 SLSM_ORIG="$backup"
 SLSM_ORIG_EXEC="$alias"
@@ -352,7 +352,7 @@ if [ -n "\$SLSM_HOME" ]; then
 		fi
 	done
 fi
-echo "steam: no usable launcher found (slsteam-moon shim)" >&2
+echo "steam: no usable launcher found (steamtools-moon shim)" >&2
 exit 127
 EOF
 }

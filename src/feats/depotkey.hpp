@@ -3,7 +3,7 @@
 // Depot decryption key feature.
 //
 // Intercepts CMsgClientGetDepotDecryptionKey requests/responses inside the
-// existing CProtoBufMsgBase hooks (already provided by SLSsteam).
+// existing CProtoBufMsgBase hooks (already provided by SteamTools).
 //
 // Behaviour summary:
 //   - Outgoing requests: track (depot_id -> app_id) so we can correlate the
@@ -19,7 +19,7 @@
 //     fetch step.
 //
 // Catalog layout (mirrors Ticket cache):
-//   <SLSsteam config dir>/cache/depotkey_<depot_id>.yaml
+//   <SteamTools config dir>/cache/depotkey_<depot_id>.yaml
 //     ---
 //     appId: <uint32>
 //     depotId: <uint32>
@@ -60,7 +60,7 @@ namespace DepotKey
 	bool saveKeyToCache(uint32_t appId, uint32_t depotId, const std::string& key, bool managed);
 
 	// True iff we hold a Lua-injected (managed) key for this depot — the
-	// signal that SLSsteam's manifest machinery should engage for it.  A
+	// signal that SteamTools's manifest machinery should engage for it.  A
 	// merely-observed key (owned game / runtime) returns false.
 	bool isManagedDepot(uint32_t depotId);
 

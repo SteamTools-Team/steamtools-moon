@@ -324,7 +324,7 @@ namespace TicketGrabber
                     Environment.Exit(1);
                 }
                 Console.WriteLine("AppOwnershipTicket received!");
-                //Current ticket sizes in SLSsteam
+                //Current ticket sizes in SteamTools
                 storeTicket("ticket", ticket.Ticket);
 
 

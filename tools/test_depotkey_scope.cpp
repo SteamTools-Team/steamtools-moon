@@ -5,7 +5,7 @@
 //
 // Why this exists
 // ---------------
-// SLSsteam's manifest machinery — synchronous blob staging in
+// SteamTools's manifest machinery — synchronous blob staging in
 // CDepotDownloadMgr::BYldRequestDepotManifest, plus GetManifestRequestCode
 // injection — must engage ONLY for content WE provide: an AddedApp (by app
 // or by depot), a depot whose decryption key WE injected from a Lua script,

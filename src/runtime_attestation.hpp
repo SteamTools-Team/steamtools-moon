@@ -239,8 +239,8 @@ namespace RuntimeAttestation
 		if (activeWriter)
 			return true;
 
-		const char* path = getenv("SLSSTEAM_ATTESTATION_FILE");
-		const char* session = getenv("SLSSTEAM_ATTESTATION_SESSION");
+		const char* path = getenv("STEAMTOOLS_ATTESTATION_FILE");
+		const char* session = getenv("STEAMTOOLS_ATTESTATION_SESSION");
 		if (path == nullptr || path[0] == '\0'
 		    || session == nullptr || session[0] == '\0')
 			return false;

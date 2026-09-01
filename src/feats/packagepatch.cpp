@@ -187,7 +187,7 @@ namespace
 		reconcileLicensesOnce();
 	}
 
-	// Walk the SLSsteam depot-key cache (`<config>/cache/depotkey_*.yaml`)
+	// Walk the SteamTools depot-key cache (`<config>/cache/depotkey_*.yaml`)
 	// and return every depot id whose recorded appId is in `appFilter`.
 	// Each cache file is plain YAML with `appId:` and `depotId:` fields.
 	std::vector<uint32_t> collectDepotsForApps(const std::unordered_set<uint32_t>& appFilter)
@@ -699,7 +699,7 @@ namespace
 		const uint32_t appsAdded = appendToVecLocked(
 			pPkg->AppIdVec, injectable, g_seededAppIds, "AppIdVec");
 
-		// Resolve depots from the SLSsteam depot-key cache.  Steam's depot
+		// Resolve depots from the SteamTools depot-key cache.  Steam's depot
 		// eligibility filter looks at pkg.DepotIdVec — if we only added
 		// the appid, the install dialog still reports 0 B because no
 		// depots are eligible.

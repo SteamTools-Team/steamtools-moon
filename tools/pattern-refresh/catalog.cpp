@@ -641,7 +641,7 @@ namespace
 			curl_easy_setopt(transfer->easy, CURLOPT_TIMEOUT_MS, 4000L);
 			curl_easy_setopt(transfer->easy, CURLOPT_NOSIGNAL, 1L);
 			curl_easy_setopt(transfer->easy, CURLOPT_ACCEPT_ENCODING, "");
-			curl_easy_setopt(transfer->easy, CURLOPT_USERAGENT, "slsteam-pattern-refresh/1");
+			curl_easy_setopt(transfer->easy, CURLOPT_USERAGENT, "steamtools-pattern-refresh/1");
 			if (safeEtag(transfer->request.etag))
 			{
 				const std::string header = "If-None-Match: " + transfer->request.etag;
@@ -1291,7 +1291,7 @@ int PatternRefresh::refreshInstallation(
 		setError(error, "Steam or configuration root is invalid");
 		return 2;
 	}
-	const std::filesystem::path patternRoot = configRoot / "SLSsteam" / "patterns";
+	const std::filesystem::path patternRoot = configRoot / "SteamTools" / "patterns";
 	std::optional<ProcessLock::FileLock> refreshLock;
 	if (mode == RefreshMode::Remote)
 	{

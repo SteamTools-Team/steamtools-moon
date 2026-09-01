@@ -1,5 +1,5 @@
 // Compile inside the build container so we link against the matching i386 libs:
-//   podman run --rm -v $PWD:/build:Z -w /build localhost/slssteam-builder bash -c \
+//   podman run --rm -v $PWD:/build:Z -w /build localhost/steamtools-builder bash -c \
 //     'g++ -std=c++20 -m32 -Iinclude tools/test_inject.cpp obj/feats/appinfo_vdf.o obj/log.o obj/config.o obj/utils.o obj/globals.o obj/filewatcher.o obj/update.o obj/api.o obj/feats/depotkey.o obj/feats/manifestid.o lib/libyaml-cpp.a -lcrypto -lpthread -ldl -o /tmp/test_inject'
 // Then run on this box (the i386 libcrypto must be installed: libcrypto.so.3:i386):
 //   /tmp/test_inject /tmp/appinfo.vdf /tmp/picsbuffer_638510.bin
@@ -25,7 +25,7 @@ int main(int argc, char** argv)
     // g_config.getDir() (which only reads env, no init needed).
     g_pLog = std::unique_ptr<CLog>(new CLog("/tmp/test_inject.log"));
     setenv("HOME", "/tmp", 1);
-    std::system("mkdir -p /tmp/.config/SLSsteam/cache");
+    std::system("mkdir -p /tmp/.config/SteamTools/cache");
 
     std::ifstream wf(argv[2], std::ios::binary | std::ios::ate);
     if (!wf) { std::cerr << "no wire buffer\n"; return 1; }

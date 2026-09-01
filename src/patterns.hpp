@@ -28,7 +28,7 @@ public:
 	// Patterns::init() fail (and therefore does not abort the whole
 	// load).  Use for patterns that gate an optional, null-guarded
 	// feature where "not found" must degrade to a safe no-op rather
-	// than disabling SLSsteam entirely.
+	// than disabling SteamTools entirely.
 	bool optional = false;
 
 	lm_address_t address = LM_ADDRESS_BAD;

@@ -3,7 +3,7 @@
 #
 # run-steamless.sh — wrapper-integration helper.  Invokes the
 # bundled Steamless build under Wine to process a Windows
-# executable. Designed to be called by the SLSsteam .so right
+# executable. Designed to be called by the SteamTools .so right
 # before Steam launches a configured-AdditionalApps binary.
 #
 # Mirrors Accela's direct-Wine invocation pattern (cleaner than
@@ -14,7 +14,7 @@
 #   run-steamless.sh --prewarm             # initialise the Wine prefix
 #                                          #   only; no exe required
 #
-# The --prewarm form is meant to be called once at SLSsteam startup
+# The --prewarm form is meant to be called once at SteamTools startup
 # in the background so the slow first-time Wine boot (~30s) completes
 # before the user clicks Play. Subsequent unpacks finish in ~3s
 # because the prefix is already initialised and the wineserver is
@@ -39,7 +39,7 @@
 #   WINESERVER        override the compatible wineserver binary; must be
 #                     executable and match WINE_BIN when set
 #   WINE_PREFIX       override prefix path
-#                     (default: ~/.local/share/SLSsteam/steamless-prefix)
+#                     (default: ~/.local/share/SteamTools/steamless-prefix)
 #   QUIET             non-empty -> suppress informational stdout
 #                     (errors still go to stderr)
 
@@ -217,7 +217,7 @@ else
 fi
 
 # ── 5. set up environment ───────────────────────────────────────────────
-WINE_PREFIX="${WINE_PREFIX:-$HOME/.local/share/SLSsteam/steamless-prefix}"
+WINE_PREFIX="${WINE_PREFIX:-$HOME/.local/share/SteamTools/steamless-prefix}"
 mkdir -p "$WINE_PREFIX"
 
 # If using Proton, point the dynamic linker at Proton's bundled libs.
@@ -287,11 +287,11 @@ cd "$STEAMLESS_HOME"
 # truncated and overwritten — and the `cat` below would then have printed
 # whatever it pointed at. mktemp creates the file itself, refusing an existing
 # name, inside a private directory.
-# Own subdirectory, deliberately NOT the SLSsteam directory the injected library
+# Own subdirectory, deliberately NOT the SteamTools directory the injected library
 # manages. Two owners chmod'ing one directory with their results discarded means a
 # failure here would make the C++ side refuse that directory and silently lose
 # both the API contract and the load lock.
-SL_LOG_DIR="${XDG_RUNTIME_DIR:-$HOME/.cache}/slsteam-steamless"
+SL_LOG_DIR="${XDG_RUNTIME_DIR:-$HOME/.cache}/steamtools-steamless"
 mkdir -p "$SL_LOG_DIR" 2>/dev/null || true
 chmod 700 "$SL_LOG_DIR" 2>/dev/null || true
 SL_LOG="$(mktemp "$SL_LOG_DIR/steamless-bypass.XXXXXX.log" 2>/dev/null)" \

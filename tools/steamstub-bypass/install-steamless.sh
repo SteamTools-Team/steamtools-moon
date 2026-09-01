@@ -10,7 +10,7 @@
 #
 # Usage:
 #   install-steamless.sh                        # next to this script
-#   install-steamless.sh --user-local           # ~/.local/share/SLSsteam/steamless-bin
+#   install-steamless.sh --user-local           # ~/.local/share/SteamTools/steamless-bin
 #   install-steamless.sh --target <absolute>    # explicit destination
 #
 # --target wins over --user-local if both are passed.
@@ -23,7 +23,7 @@ TARGET_DIR="$SCRIPT_DIR/../steamless-bin"
 while [ $# -gt 0 ]; do
     case "$1" in
         --user-local)
-            TARGET_DIR="$HOME/.local/share/SLSsteam/steamless-bin"
+            TARGET_DIR="$HOME/.local/share/SteamTools/steamless-bin"
             shift
             ;;
         --target)

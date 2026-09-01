@@ -171,7 +171,7 @@ namespace
 
 		TempDirectory()
 		{
-			std::string pattern = "/tmp/slsteam-pattern-refresh-test-XXXXXX";
+			std::string pattern = "/tmp/steamtools-pattern-refresh-test-XXXXXX";
 			char* created = mkdtemp(pattern.data());
 			expect(created != nullptr, "temporary test directory is created");
 			if (created != nullptr)
@@ -893,10 +893,10 @@ int main()
 			expect(server.requestCount() >= 4 && server.requestCount() <= 8,
 			       "both modules refresh while redundant mirror requests may be cancelled");
 			expect(std::filesystem::exists(
-				configRoot / "SLSsteam/patterns/steamclient" / (client->identity.sha256 + ".toml")
+				configRoot / "SteamTools/patterns/steamclient" / (client->identity.sha256 + ".toml")
 			), "steamclient active TOML is installed");
 			expect(std::filesystem::exists(
-				configRoot / "SLSsteam/patterns/steamui" / (ui->identity.sha256 + ".toml")
+				configRoot / "SteamTools/patterns/steamui" / (ui->identity.sha256 + ".toml")
 			), "steamui active TOML is installed");
 			const std::size_t requestsBeforeCacheOnly = server.requestCount();
 			expect(refreshInstallation(
@@ -916,7 +916,7 @@ int main()
 		TempDirectory temporary;
 		const auto steamRoot = temporary.path / "steam";
 		const auto configRoot = temporary.path / "config";
-		const auto stateRoot = configRoot / "SLSsteam/patterns/.state";
+		const auto stateRoot = configRoot / "SteamTools/patterns/.state";
 		std::filesystem::create_directories(steamRoot / "ubuntu12_32");
 		std::filesystem::create_directories(stateRoot);
 		writeBytes(steamRoot / "ubuntu12_32/steamclient.so", testElf());

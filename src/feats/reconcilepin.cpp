@@ -39,8 +39,8 @@ namespace
 	lm_address_t g_tramp = LM_ADDRESS_BAD;
 	lm_size_t    g_size = 0;
 
-	bool g_pinActive = false;   // SLSSTEAM_RECONCILE_PIN: perform the gid rewrite
-	bool g_trace = false;       // SLSSTEAM_RECONCILE_TRACE: per-call logging
+	bool g_pinActive = false;   // STEAMTOOLS_RECONCILE_PIN: perform the gid rewrite
+	bool g_trace = false;       // STEAMTOOLS_RECONCILE_TRACE: per-call logging
 	std::atomic<int> g_traceBudget{400};
 
 	// ctx layout (confirmed live on build cfe99f0c).
@@ -327,11 +327,11 @@ namespace ReconcilePin
 		// configured ManifestPins entry, while lockedApps remains exclusively the
 		// update-suppression policy in Apps::shouldDisableUpdates.
 		g_pinActive = true;
-		if (const char* e = std::getenv("SLSSTEAM_RECONCILE_PIN"))
+		if (const char* e = std::getenv("STEAMTOOLS_RECONCILE_PIN"))
 		{
 			g_pinActive = !(e[0] == '0' && e[1] == '\0');
 		}
-		if (const char* e = std::getenv("SLSSTEAM_RECONCILE_TRACE"))
+		if (const char* e = std::getenv("STEAMTOOLS_RECONCILE_TRACE"))
 		{
 			g_trace = !(e[0] == '0' && e[1] == '\0');
 		}

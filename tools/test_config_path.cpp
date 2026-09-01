@@ -1,8 +1,8 @@
-// Standalone regression test for the canonical SLSsteam config directory.
+// Standalone regression test for the canonical SteamTools config directory.
 //
 // The runtime config reader and cache lock must resolve XDG_CONFIG_HOME in
 // exactly the same way. In particular, an empty XDG_CONFIG_HOME is treated
-// like an unset value and falls back to $HOME/.config, not /SLSsteam.
+// like an unset value and falls back to $HOME/.config, not /SteamTools.
 
 #include "../src/config_path.hpp"
 
@@ -25,16 +25,16 @@ static void check(bool condition, const char* message)
 
 int main()
 {
-    using ConfigPath::slsteamConfigDir;
+    using ConfigPath::steamtoolsConfigDir;
 
-    check(slsteamConfigDir(nullptr, "/home/tester") ==
-              "/home/tester/.config/SLSsteam",
+    check(steamtoolsConfigDir(nullptr, "/home/tester") ==
+              "/home/tester/.config/SteamTools",
           "unset XDG_CONFIG_HOME uses the HOME config directory");
-    check(slsteamConfigDir("", "/home/tester") ==
-              "/home/tester/.config/SLSsteam",
+    check(steamtoolsConfigDir("", "/home/tester") ==
+              "/home/tester/.config/SteamTools",
           "empty XDG_CONFIG_HOME uses the HOME config directory");
-    check(slsteamConfigDir("/tmp/xdg", "/home/tester") ==
-              "/tmp/xdg/SLSsteam",
+    check(steamtoolsConfigDir("/tmp/xdg", "/home/tester") ==
+              "/tmp/xdg/SteamTools",
           "nonempty XDG_CONFIG_HOME is used as the config directory base");
 
     if (g_failures == 0) std::puts("all config-path checks passed");

@@ -49,9 +49,9 @@
 //     threads from the LD_AUDIT preinit path is a recorded anti-pattern);
 //   * runs the WHOLE pending set inline, in FIFO order, so total order is
 //     preserved;
-//   * reported in `~/.SLSsteam.log` and in the trace as `direct_stale`, so it
+//   * reported in `~/.SteamTools.log` and in the trace as `direct_stale`, so it
 //     is never silent;
-//   * `SLSSTEAM_OWNER_QUEUE_MAX_STALE_MS=0` switches it off, i.e. explicitly
+//   * `STEAMTOOLS_OWNER_QUEUE_MAX_STALE_MS=0` switches it off, i.e. explicitly
 //     chooses "accept eventual execution".
 #pragma once
 
@@ -68,7 +68,7 @@ namespace OwnerWork
 	// runs it inline. Well above the measured owner cadence (~3.3-3.4 s on an
 	// idle client), so this is reached only when the owner thread has really
 	// stopped running IPC frames.
-	// Override with SLSSTEAM_OWNER_QUEUE_MAX_STALE_MS (0 = never escape).
+	// Override with STEAMTOOLS_OWNER_QUEUE_MAX_STALE_MS (0 = never escape).
 	inline constexpr unsigned int kDefaultMaxStaleMs = 30000;
 	inline constexpr unsigned int kMaxMaxStaleMs = 600000;
 

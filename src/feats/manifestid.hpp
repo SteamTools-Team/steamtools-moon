@@ -18,7 +18,7 @@
 // upstream's `public`.
 //
 // Catalog layout (mirrors DepotKey):
-//   <SLSsteam config dir>/cache/manifestid_<depotId>.yaml
+//   <SteamTools config dir>/cache/manifestid_<depotId>.yaml
 //     ---
 //     depotId: <uint32>
 //     gid: "<numeric-string>"

@@ -44,7 +44,7 @@ namespace
 	bool localCacheEnabled()
 	{
 		return PatternCache::enabled(
-			g_config.patternCache.get(), std::getenv("SLSSTEAM_PATTERN_CACHE")
+			g_config.patternCache.get(), std::getenv("STEAMTOOLS_PATTERN_CACHE")
 		);
 	}
 
@@ -297,14 +297,14 @@ namespace
 		{
 			std::filesystem::path root(xdg);
 			if (root.is_absolute())
-				return root / "SLSsteam" / "patterns";
+				return root / "SteamTools" / "patterns";
 			return std::nullopt;
 		}
 		if (const char* home = std::getenv("HOME"); home != nullptr && home[0] != '\0')
 		{
 			std::filesystem::path root(home);
 			if (root.is_absolute())
-				return root / ".config" / "SLSsteam" / "patterns";
+				return root / ".config" / "SteamTools" / "patterns";
 		}
 		return std::nullopt;
 	}
@@ -1109,7 +1109,7 @@ namespace Patterns
 		// across builds stay compatible.  The member offset (`8B B8 ?? ?? 00
 		// 00` = mov edi,[eax+0x1bXX]) is ALSO masked: it is a CUser layout
 		// field whose value drifted 0x1b18 -> 0x1b14 on the 2026-06-23 client
-		// (a 4-byte shift; RequiresLegacyCDKey moved the same way).  SLSsteam
+		// (a 4-byte shift; RequiresLegacyCDKey moved the same way).  SteamTools
 		// only needs to LOCATE this function (it invokes it by pointer with
 		// g_pLocalUser as `this`); the offset value itself is internal to the
 		// function, so wildcarding it makes the signature self-heal across that
@@ -1259,7 +1259,7 @@ namespace Patterns
 		// The tail thunk adjusts the interface `this` to the implementation
 		// pointer with `sub eax,<off>` (`2D ?? ?? 00 00`).  That offset is a
 		// layout constant that drifted 0x18d8 -> 0x18d4 on the 2026-06-23
-		// client; it is only part of the LOCATION signature (SLSsteam hooks the
+		// client; it is only part of the LOCATION signature (SteamTools hooks the
 		// function, it does not use the offset value), so it is masked here to
 		// self-heal across that drift.  The long surrounding tail keeps the
 		// match unique — verified exactly 1 hit in both the pre- and

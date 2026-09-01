@@ -9,7 +9,7 @@
 //     call <read msg id>; mov eax,[ebp+disp]; add esp,0x10; cmp eax,<ROOT>
 //   = E8 ?? ?? ?? ??  8B 85 ?? ?? ?? ??  83 C4 10  3D <root:u32>
 //
-// The old slsteam patterns hard-code <ROOT>. That id drifts whenever Steam
+// The old steamtools patterns hard-code <ROOT>. That id drifts whenever Steam
 // adds/removes a method on the interface, so every such update broke the load
 // and needed a manual re-derivation. Instead we locate
 // EVERY candidate of the generic shape and pick the one whose root is
@@ -456,8 +456,8 @@ int main(int argc, char** argv)
 	test_binary_robustness(path);
 
 	// Optional pre-update binary for the offset-pattern differential test.
-	// Path via argv[2] or $SLSSTEAM_OLD_STEAMCLIENT; the test skips if absent.
-	const char* oldEnv = std::getenv("SLSSTEAM_OLD_STEAMCLIENT");
+	// Path via argv[2] or $STEAMTOOLS_OLD_STEAMCLIENT; the test skips if absent.
+	const char* oldEnv = std::getenv("STEAMTOOLS_OLD_STEAMCLIENT");
 	std::string oldPath = (argc > 2) ? argv[2] : (oldEnv ? oldEnv : "");
 	test_offset_patterns(path, oldPath);
 	test_required_patterns(path, oldPath);

@@ -30,8 +30,8 @@ trap 'rm -rf "$TMP"' EXIT
 
 REAL_HOME="$TMP/home/real"
 FAKE_HOME="$TMP/home/attacker"
-mkdir -p "$REAL_HOME/.local/share/SLSsteam/path" "$REAL_HOME/.steam"
-mkdir -p "$FAKE_HOME/.local/share/SLSsteam/path" "$FAKE_HOME/.steam"
+mkdir -p "$REAL_HOME/.local/share/SteamTools/path" "$REAL_HOME/.steam"
+mkdir -p "$FAKE_HOME/.local/share/SteamTools/path" "$FAKE_HOME/.steam"
 
 # A bootstrapped Steam root, which the shim requires before it will use the
 # wrapper at all.
@@ -47,17 +47,17 @@ ln -sfn "$STEAM_ROOT" "$FAKE_HOME/.steam/steam"
 
 # The genuine wrapper, and an attacker-planted one in a different home.
 for h in "$REAL_HOME" "$FAKE_HOME"; do
-	cat > "$h/.local/share/SLSsteam/path/steam" <<EOF
+	cat > "$h/.local/share/SteamTools/path/steam" <<EOF
 #!/bin/sh
 echo "WRAPPER:$(basename "$h")"
 EOF
-	chmod 0700 "$h/.local/share/SLSsteam/path/steam"
+	chmod 0700 "$h/.local/share/SteamTools/path/steam"
 done
 
 # The captured original package launcher.
 ORIG_DIR="$TMP/backup"
 mkdir -p "$ORIG_DIR"
-BACKUP="$ORIG_DIR/steam.slsteam-moon.orig"
+BACKUP="$ORIG_DIR/steam.steamtools-moon.orig"
 cat > "$BACKUP" <<'EOF'
 #!/bin/sh
 echo "ORIGINAL_LAUNCHER"
@@ -136,18 +136,18 @@ check "T3b elevated invocation uses the packaged launcher" \
 #     otherwise any local process can replace what the shim executes.
 # ---------------------------------------------------------------------------
 make_stubs "$MY_UID" "real" "$REAL_HOME"
-chmod 0777 "$REAL_HOME/.local/share/SLSsteam/path/steam"
+chmod 0777 "$REAL_HOME/.local/share/SteamTools/path/steam"
 OUT="$(run_shim "$REAL_HOME")"
 check "T4 a world-writable wrapper is refused" '[ "$OUT" != "WRAPPER:real" ]'
 check "T4b a refused wrapper falls back to the packaged launcher" \
 	'[ "$OUT" = "ORIGINAL_LAUNCHER" ]'
-chmod 0700 "$REAL_HOME/.local/share/SLSsteam/path/steam"
+chmod 0700 "$REAL_HOME/.local/share/SteamTools/path/steam"
 
 # A group-writable wrapper is equally unacceptable.
-chmod 0770 "$REAL_HOME/.local/share/SLSsteam/path/steam"
+chmod 0770 "$REAL_HOME/.local/share/SteamTools/path/steam"
 OUT="$(run_shim "$REAL_HOME")"
 check "T5 a group-writable wrapper is refused" '[ "$OUT" != "WRAPPER:real" ]'
-chmod 0700 "$REAL_HOME/.local/share/SLSsteam/path/steam"
+chmod 0700 "$REAL_HOME/.local/share/SteamTools/path/steam"
 
 # ---------------------------------------------------------------------------
 # T6: a symlink in the wrapper's place is refused — it can be repointed at any
@@ -159,13 +159,13 @@ cat > "$PAYLOAD" <<'EOF'
 echo "PAYLOAD"
 EOF
 chmod 0700 "$PAYLOAD"
-mv "$REAL_HOME/.local/share/SLSsteam/path/steam" "$TMP/wrapper.real"
-ln -s "$PAYLOAD" "$REAL_HOME/.local/share/SLSsteam/path/steam"
+mv "$REAL_HOME/.local/share/SteamTools/path/steam" "$TMP/wrapper.real"
+ln -s "$PAYLOAD" "$REAL_HOME/.local/share/SteamTools/path/steam"
 OUT="$(run_shim "$REAL_HOME")"
 check "T6 a symlinked wrapper is refused" '[ "$OUT" != "PAYLOAD" ]'
 check "T6b it falls back to the packaged launcher" '[ "$OUT" = "ORIGINAL_LAUNCHER" ]'
-rm -f "$REAL_HOME/.local/share/SLSsteam/path/steam"
-mv "$TMP/wrapper.real" "$REAL_HOME/.local/share/SLSsteam/path/steam"
+rm -f "$REAL_HOME/.local/share/SteamTools/path/steam"
+mv "$TMP/wrapper.real" "$REAL_HOME/.local/share/SteamTools/path/steam"
 
 # ---------------------------------------------------------------------------
 # T7: the generated shim must not read HOME straight out of the environment for
@@ -182,7 +182,7 @@ check "T7c the shim validates the wrapper before exec" \
 # T8: with nothing usable at all the shim still exits cleanly rather than
 #     executing something unexpected.
 # ---------------------------------------------------------------------------
-rm -f "$REAL_HOME/.local/share/SLSsteam/path/steam" "$BACKUP"
+rm -f "$REAL_HOME/.local/share/SteamTools/path/steam" "$BACKUP"
 OUT="$(run_shim "$REAL_HOME")"
 check "T8 with no wrapper and no original, the bootstrapped steam.sh is used" \
 	'[ "$OUT" = "REAL_STEAM_SH" ]'
@@ -202,7 +202,7 @@ echo "PWNED_STEAMSH"
 EOF
 chmod 0777 "$VICTIM_STEAM/steam.sh"
 # Nothing else must be usable, so the fallback loop is the only path left.
-rm -f "$REAL_HOME/.local/share/SLSsteam/path/steam"
+rm -f "$REAL_HOME/.local/share/SteamTools/path/steam"
 rm -f "$STEAM_ROOT/steam.sh"
 make_stubs 0 "root" "$ROOT_HOME"
 OUT="$(run_shim "$REAL_HOME")"

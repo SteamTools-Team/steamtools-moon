@@ -1,7 +1,7 @@
 #!/bin/bash
 
-SLSDIR="$HOME/.local/share/SLSsteam"
-SLSLIB="$SLSDIR/SLSsteam.so"
+SLSDIR="$HOME/.local/share/SteamTools"
+SLSLIB="$SLSDIR/SteamTools.so"
 OS_RELEASE_FILE="${OS_RELEASE_FILE:-/etc/os-release}"
 
 # User-local applications dir (XDG override always wins over system-wide).
@@ -16,7 +16,7 @@ USER_AUTOSTART="${XDG_CONFIG_HOME:-$HOME/.config}/autostart/steam.desktop"
 SYS_AUTOSTART="/etc/xdg/autostart/steam.desktop"
 
 # Tag we drop into patched .desktop files so we can detect/undo them later.
-SLSM_TAG="X-SLSteamMoon-Patched=true"
+SLSM_TAG="X-SteamToolsMoon-Patched=true"
 
 # Desktop-coverage logic (scan + patch every *steam*.desktop, blindagens,
 # restore) lives in one sourceable lib shared with the wrapper and Lumen. Source
@@ -89,7 +89,7 @@ print_banner() {
 	echo ""
 	echo -e "${MOON}${BOLD}"
 	echo "┌─────────────────────────────────────────────────────────┐"
-	printf "│             ${HALO}${BOLD}◯${NC}${MOON}${BOLD}  slsteam-moon installer                   │\n"
+	printf "│             ${HALO}${BOLD}◯${NC}${MOON}${BOLD}  steamtools-moon installer                   │\n"
 	echo "└─────────────────────────────────────────────────────────┘"
 	echo -e "${NC}"
 }
@@ -111,7 +111,7 @@ print_install_complete() {
 	echo ""
 	echo -e "${GREEN}${BOLD}"
 	echo "┌─────────────────────────────────────────────────────────┐"
-	echo "│        ✓ slsteam-moon Installation Completed!           │"
+	echo "│        ✓ steamtools-moon Installation Completed!           │"
 	echo "└─────────────────────────────────────────────────────────┘"
 	echo -e "${NC}"
 }
@@ -289,9 +289,9 @@ kill_steam() {
 # Install steps
 # ============================================================================
 
-install_slssteam()
+install_steamtools()
 {
-	LIB="./bin/SLSsteam.so"
+	LIB="./bin/SteamTools.so"
 
 	if [ ! -f "$LIB" ]; then
 		log_error "$LIB not found"
@@ -303,7 +303,7 @@ install_slssteam()
 		exit 1
 	fi
 
-	log_info "Installing SLSsteam libraries"
+	log_info "Installing SteamTools libraries"
 	mkdir -p "$SLSDIR" || exit 1
 	cp -v ./bin/* "$SLSDIR/" | sed "s|^|   ${MUTED}${NC}|"
 	# Desktop-coverage helper (scan + patch all *steam*.desktop). Shipped in the
@@ -322,7 +322,7 @@ install_slssteam()
 
 create_steam_wrapper()
 {
-	log_info "Creating Steam wrapper with SLSsteam injection"
+	log_info "Creating Steam wrapper with SteamTools injection"
 
 	mkdir -p "$SLSDIR/path"
 
@@ -331,12 +331,12 @@ create_steam_wrapper()
 	# /usr/games/steam and an Arch-style /usr/bin/steam).
 	cat > "$SLSDIR/path/steam" << 'EOF'
 #!/bin/sh
-# slsteam-moon wrapper. Injects SLSsteam via LD_AUDIT (rtld-audit) so the audit
+# steamtools-moon wrapper. Injects SteamTools via LD_AUDIT (rtld-audit) so the audit
 # namespace can't interpose on Steam's own copies of protobuf / yaml-cpp /
 # libstdc++. library-inject.so redirects libcurl to the system copy and must
 # come first. CloudRedirect (cloud saves) is injected separately via LD_PRELOAD
 # (see its block below).
-SLSDIR="$HOME/.local/share/SLSsteam"
+SLSDIR="$HOME/.local/share/SteamTools"
 
 # Desktop entries from older installs may invoke this wrapper with our audit
 # DSOs already present in LD_AUDIT.  Remove only our known objects immediately,
@@ -349,7 +349,7 @@ slsm_strip_own_auditors() {
 	_slsm_clean=""
 	for _slsm_audit in ${LD_AUDIT:-}; do
 		case "$_slsm_audit" in
-			''|*SLSsteam.so|*library-inject.so|*libSLSsteam.so|*libSLS-library-inject.so)
+			''|*SteamTools.so|*library-inject.so|*libSteamTools.so|*libSLS-library-inject.so)
 				continue ;;
 			*)
 				_slsm_clean="${_slsm_clean:+$_slsm_clean:}$_slsm_audit" ;;
@@ -374,7 +374,7 @@ SLSM_EXPLICIT_STEAM_BIN=0
 # chain; resolve a vanilla Steam path instead.
 if [ -n "${SLSM_STEAM_BIN:-}" ] && \
    head -3 "$SLSM_STEAM_BIN" 2>/dev/null | \
-   grep -qF "slsteam-moon system launcher shim"; then
+   grep -qF "steamtools-moon system launcher shim"; then
 	unset SLSM_STEAM_BIN
 fi
 # Override hook: an explicit, executable path wins. Lets power users pin a
@@ -389,7 +389,7 @@ if [ -z "$STEAM_BIN" ]; then
 	for c in /usr/games/steam /usr/bin/steam /usr/local/bin/steam; do
 		if [ -x "$c" ] \
 			&& [ "$(readlink -f "$c" 2>/dev/null || echo "$c")" != "$SELF" ] \
-			&& ! head -3 "$c" 2>/dev/null | grep -q "slsteam-moon system launcher shim"; then
+			&& ! head -3 "$c" 2>/dev/null | grep -q "steamtools-moon system launcher shim"; then
 			STEAM_BIN="$c"
 			break
 		fi
@@ -402,7 +402,7 @@ if [ -z "$STEAM_BIN" ]; then
 		c="$d/steam"
 		if [ -x "$c" ] \
 			&& [ "$(readlink -f "$c" 2>/dev/null || echo "$c")" != "$SELF" ] \
-			&& ! head -3 "$c" 2>/dev/null | grep -q "slsteam-moon system launcher shim"; then
+			&& ! head -3 "$c" 2>/dev/null | grep -q "steamtools-moon system launcher shim"; then
 			STEAM_BIN="$c"
 			break
 		fi
@@ -423,7 +423,7 @@ if [ -z "$STEAM_BIN" ]; then
 	done
 fi
 if [ -z "$STEAM_BIN" ]; then
-	echo "slsteam-moon: could not find the real Steam binary" >&2
+	echo "steamtools-moon: could not find the real Steam binary" >&2
 	exit 127
 fi
 # Canonicalize relative paths before we touch cwd below. Absolute paths must
@@ -537,7 +537,7 @@ fi
 # Crash-loop fail-safe (Game Mode boot protection).
 #
 # In a gamescope "Game Mode" session the supervisor relaunches Steam every time
-# it exits. If our injected stack (SLSsteam via LD_AUDIT / CloudRedirect via
+# it exits. If our injected stack (SteamTools via LD_AUDIT / CloudRedirect via
 # LD_PRELOAD / the Lumen sidecar) goes incompatible with a freshly-updated Steam
 # client and stalls the engine, the device loops on the splash forever and the
 # user can never reach Desktop Mode to update. This guard counts boots that
@@ -559,7 +559,7 @@ fi
 # (sessions.d STEAMCMD), SteamOS (steam-launcher PATH drop-in) and Desktop Mode
 # all funnel through this one wrapper. Every step is best-effort and can never
 # itself block the launch.
-GUARD_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/slsteam-moon"
+GUARD_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/steamtools-moon"
 mkdir -p "$GUARD_DIR" 2>/dev/null || true
 GUARD_LAST="$GUARD_DIR/last_launch"          # mtime = start of the most recent boot
 GUARD_GFX="$GUARD_DIR/last_launch_display"   # 1/0: did the most recent launch have a display
@@ -627,7 +627,7 @@ guard_client_fp() {
 # it - which the plugin does on reinstall/update - changes this, so a stuck
 # safe-mode latch auto-clears once the user has updated.
 guard_fingerprint() {
-	for _f in "$SLSDIR/SLSsteam.so" \
+	for _f in "$SLSDIR/SteamTools.so" \
 	          "$HOME/.local/share/CloudRedirect/cloud_redirect.so" \
 	          "$HOME/.local/share/Lumen/lumen"; do
 		if [ -e "$_f" ]; then
@@ -743,7 +743,7 @@ if [ "$GUARD_FAILS" -ge "$SLSM_GUARD_MAX_FAILS" ] || { [ "$guard_client_changed"
 			rm -f "$_r/appcache/appinfo.vdf" 2>/dev/null && guard_log "removed $_r/appcache/appinfo.vdf"
 		fi
 	done
-	guard_notify "slsteam-moon paused itself for this session because Steam kept failing to start. Steam is running normally - injection is retried the next time you reboot, or right away if you update the plugin from the LuaTools menu."
+	guard_notify "steamtools-moon paused itself for this session because Steam kept failing to start. Steam is running normally - injection is retried the next time you reboot, or right away if you update the plugin from the LuaTools menu."
 	guard_log "recovery mode latched for this session; Steam will launch unhooked until the next session or a payload update"
 	slsm_exec_vanilla "$@"
 fi
@@ -812,7 +812,7 @@ slsm_refresh_patterns
 # attaches on slow-bootstrap distros (Arch/CachyOS) too. It is a plain
 # LD_PRELOAD library: loading it as an LD_AUDIT auditor corrupts the client
 # heap (realloc(): invalid pointer) during init, so it must NOT go in the
-# LD_AUDIT list. SLSsteam stays on LD_AUDIT (library-inject.so first).
+# LD_AUDIT list. SteamTools stays on LD_AUDIT (library-inject.so first).
 # CloudRedirect's constructor self-removes itself from LD_PRELOAD so child
 # processes (the game, steamwebhelper) don't inherit it.
 CR_SO="$HOME/.local/share/CloudRedirect/cloud_redirect.so"
@@ -850,19 +850,19 @@ if [ -x "$LUMEN_DIR/lumen" ] && ! pgrep -f "$LUMEN_DIR/lumen" >/dev/null 2>&1; t
 	touch "$HOME/.steam/steam/.cef-enable-remote-debugging" 2>/dev/null || true
 	touch "$HOME/.steam/debian-installation/.cef-enable-remote-debugging" 2>/dev/null || true
 	env -u LD_AUDIT -u LD_PRELOAD -u LD_LIBRARY_PATH \
-	    LUMEN_BACKEND_DIR="$LUMEN_DIR/luatools/backend" \
+	    LUMEN_BACKEND_DIR="$LUMEN_DIR/steamtools/backend" \
 	    LUMEN_LUA_DIR="$LUMEN_DIR/lua" \
 	    setsid "$LUMEN_DIR/lumen" >/dev/null 2>&1 < /dev/null &
 fi
 
-AUDIT="$SLSDIR/library-inject.so:$SLSDIR/SLSsteam.so"
+AUDIT="$SLSDIR/library-inject.so:$SLSDIR/SteamTools.so"
 
 # Re-assert desktop-entry coverage without putting reconciliation on the launch
 # critical path. Prefer the serialized guardian; retain the legacy CLI fallback
 # during upgrades or on desktops without a working user manager.
 if command -v systemctl >/dev/null 2>&1 && \
-   systemctl --user --quiet is-enabled slsteam-desktop-guardian.path >/dev/null 2>&1; then
-	systemctl --user start slsteam-desktop-guardian.service >/dev/null 2>&1 &
+   systemctl --user --quiet is-enabled steamtools-desktop-guardian.path >/dev/null 2>&1; then
+	systemctl --user start steamtools-desktop-guardian.service >/dev/null 2>&1 &
 elif [ -x "$SLSDIR/ensure-desktop-coverage.sh" ]; then
 	# Lowest priority we can give it: this fallback runs concurrently with Steam's
 	# own start, and a pass that does have work to do is seconds of shell CPU.
@@ -1015,13 +1015,13 @@ setup_path_and_desktop()
 	local rc found=0
 	for rc in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile"; do
 		[ -f "$rc" ] || continue
-		if grep -q "SLSsteam/path" "$rc" 2>/dev/null; then
+		if grep -q "SteamTools/path" "$rc" 2>/dev/null; then
 			log_success "Already in $(basename "$rc")"
 		else
 			{
 				echo ''
-				echo '# SLSsteam: Add wrapper to PATH'
-				echo 'export PATH="$HOME/.local/share/SLSsteam/path:$PATH"'
+				echo '# SteamTools: Add wrapper to PATH'
+				echo 'export PATH="$HOME/.local/share/SteamTools/path:$PATH"'
 			} >> "$rc"
 			log_success "Added wrapper to $(basename "$rc")"
 		fi
@@ -1029,7 +1029,7 @@ setup_path_and_desktop()
 	done
 	if [ "$found" = 0 ]; then
 		# Create a .bashrc if no shell rc files exist (rare but possible).
-		echo 'export PATH="$HOME/.local/share/SLSsteam/path:$PATH"' > "$HOME/.bashrc"
+		echo 'export PATH="$HOME/.local/share/SteamTools/path:$PATH"' > "$HOME/.bashrc"
 		log_success "Created ~/.bashrc with wrapper PATH"
 	fi
 
@@ -1085,7 +1085,7 @@ setup_path_and_desktop()
 	# actually took: silently-inert units are the top cause of injection being
 	# lost on the next boot, so surface it clearly instead of reporting success.
 	if command -v systemctl >/dev/null 2>&1; then
-		if ! systemctl --user is-enabled slsteam-desktop-guardian.path >/dev/null 2>&1; then
+		if ! systemctl --user is-enabled steamtools-desktop-guardian.path >/dev/null 2>&1; then
 			log_warn "Desktop guardian installed but NOT active (systemd --user unreachable at install time). Cold-boot injection self-healing is OFF; re-run this installer from your normal desktop session (not via sudo/root)."
 		fi
 	fi
@@ -1238,7 +1238,7 @@ install_all()
 	kill_steam
 
 	print_section "Installing libraries"
-	install_slssteam
+	install_steamtools
 
 	print_section "Creating Steam wrapper"
 	create_steam_wrapper
@@ -1263,7 +1263,7 @@ restore_or_remove_desktop() {
 
 	[ -f "$f" ] || return 0
 	if [ ! -f "$backup" ]; then
-		for legacy in "$f.slssteam-backup" "$f.slsteam-bak"; do
+		for legacy in "$f.steamtools-backup" "$f.steamtools-bak"; do
 			[ -f "$legacy" ] || continue
 			mkdir -p "$(dirname "$backup")" 2>/dev/null || break
 			if [ -n "$sudo_cmd" ]; then
@@ -1295,7 +1295,7 @@ restore_or_remove_desktop() {
 uninstall()
 {
 	print_banner
-	print_section "Uninstalling SLSsteam"
+	print_section "Uninstalling SteamTools"
 	local desktop_restore_complete=1
 	local launcher_restore_complete=1
 
@@ -1305,10 +1305,10 @@ uninstall()
 	local rc
 	for rc in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile"; do
 		[ -f "$rc" ] || continue
-		if grep -q "SLSsteam/path" "$rc" 2>/dev/null; then
+		if grep -q "SteamTools/path" "$rc" 2>/dev/null; then
 			log_info "Cleaning wrapper PATH entry from $(basename "$rc")"
-			sed -i '/# SLSsteam: Add wrapper to PATH/d' "$rc"
-			sed -i '\|SLSsteam/path|d' "$rc"
+			sed -i '/# SteamTools: Add wrapper to PATH/d' "$rc"
+			sed -i '\|SteamTools/path|d' "$rc"
 		fi
 	done
 
@@ -1350,12 +1350,12 @@ uninstall()
 	fi
 
 	# Legacy: /usr/games/steam patch from older versions.
-	if ! is_immutable_distro && [ -f "/usr/games/steam" ] && grep -q "SLSsteam" "/usr/games/steam" 2>/dev/null; then
+	if ! is_immutable_distro && [ -f "/usr/games/steam" ] && grep -q "SteamTools" "/usr/games/steam" 2>/dev/null; then
 		log_info "Found legacy /usr/games/steam modification"
-		if [ -f "/usr/games/steam.slsteam-backup" ]; then
+		if [ -f "/usr/games/steam.steamtools-backup" ]; then
 			log_info "Restoring original /usr/games/steam (requires sudo)"
-			sudo cp "/usr/games/steam.slsteam-backup" "/usr/games/steam"
-			sudo rm "/usr/games/steam.slsteam-backup"
+			sudo cp "/usr/games/steam.steamtools-backup" "/usr/games/steam"
+			sudo rm "/usr/games/steam.steamtools-backup"
 			log_success "Restored /usr/games/steam"
 		else
 			log_warn "Legacy modification found but no backup exists"
@@ -1380,7 +1380,7 @@ uninstall()
 				/*) : ;;
 				*) state_home="$HOME/.local/state" ;;
 			esac
-			rm -f -- "$state_home/slsteam-moon/coverage.policy" 2>/dev/null || true
+			rm -f -- "$state_home/steamtools-moon/coverage.policy" 2>/dev/null || true
 		fi
 	else
 		log_warn "Keeping coverage.policy while a system launcher shim still needs restoration"

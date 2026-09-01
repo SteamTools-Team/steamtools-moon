@@ -11,7 +11,7 @@
 //   <install-root>/tools/steamless-bin/Steamless.CLI.exe
 //   <install-root>/tools/steamless-bin/Plugins/*.dll
 //
-// The .so also probes ~/.local/share/SLSsteam/{steamstub-bypass,
+// The .so also probes ~/.local/share/SteamTools/{steamstub-bypass,
 // steamless-bin}/ as a user-local fallback for system-package
 // installs where the install root is read-only.
 
@@ -22,7 +22,7 @@
 namespace SteamStub
 {
 	// Resolve helper paths from `installRoot` (the directory
-	// holding SLSsteam.so).  Idempotent.  Logs a debug note and
+	// holding SteamTools.so).  Idempotent.  Logs a debug note and
 	// disables the feature if the helper script or third-party
 	// binaries are missing.
 	void setup(const char* installRoot);

@@ -40,7 +40,7 @@ static std::string readAll(const fs::path& path)
 
 int main()
 {
-	char tmpTemplate[] = "/tmp/slsteam_manifeststore_test_XXXXXX";
+	char tmpTemplate[] = "/tmp/steamtools_manifeststore_test_XXXXXX";
 	const char* tmp = mkdtemp(tmpTemplate);
 	if (!tmp)
 	{
@@ -131,7 +131,7 @@ int main()
 	bool foundTmp = false;
 	for (const auto& entry : fs::recursive_directory_iterator(root))
 	{
-		if (entry.path().filename().string().find(".slsteam_tmp.") !=
+		if (entry.path().filename().string().find(".steamtools_tmp.") !=
 		    std::string::npos)
 		{
 			foundTmp = true;
