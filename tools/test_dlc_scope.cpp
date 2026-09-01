@@ -2,7 +2,7 @@
 //
 // This links the real feats/dlc.cpp and supplies only the Steam/config
 // boundaries it reads.  A DLC from an ordinary owned game must retain
-// Steam's answer; only DLCs discovered from a LuaTools-managed base app may
+// Steam's answer; only DLCs discovered from a SteamTools-managed base app may
 // receive the local ownership override.
 
 #include "../src/config.hpp"
@@ -77,7 +77,7 @@ int main()
 	Apps::setDiscoveredAppDlcIds({kManagedDlc});
 	CHECK(Apps::ownershipOverrideAllowed(
 	          true, false, false, false, false, false, false),
-	      "a LuaTools-managed app remains eligible before type discovery");
+	      "a SteamTools-managed app remains eligible before type discovery");
 	CHECK(!Apps::ownershipOverrideAllowed(
 	          false, true, false, true, true, false, false),
 	      "an unmanaged DLC is rejected before any ownership metadata changes");
@@ -129,7 +129,7 @@ int main()
 	Apps::setConfiguredAppDlcIds(CConfig::selectConfiguredDlcIds(
 		g_config.managedAppIds.get(), g_config.dlcData.get()));
 	CHECK(DLC::getDlcCount(kBaseApp) == 1,
-	      "DlcData remains available for a LuaTools-managed base app");
+	      "DlcData remains available for a SteamTools-managed base app");
 	std::uint32_t manualDlc = 0;
 	bool manualAvailable = false;
 	char manualName[32] = {};

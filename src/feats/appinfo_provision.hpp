@@ -308,7 +308,7 @@ inline std::string cacheLockPath()
 }
 
 // Forget the on-disk app-scoped state for an app that was removed from
-// LuaTools. Artifacts are quarantined with a recoverable suffix rather than
+// SteamTools. Artifacts are quarantined with a recoverable suffix rather than
 // deleted, so a mistaken removal can be restored without data loss. Returns
 // false for an invalid app id or when any app-scoped artifact could not be
 // quarantined; a missing artifact is a successful no-op.

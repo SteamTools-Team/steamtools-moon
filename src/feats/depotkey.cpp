@@ -197,7 +197,7 @@ bool saveKeyToCache(uint32_t appId, uint32_t depotId, const std::string& key, bo
 
 	uint32_t finalAppId = appId ? appId : existing.appId;
 	// managed is sticky: a passive re-observation must never downgrade a
-	// LuaTools depot out of manifest scope (depotkey_scope.hpp).
+	// SteamTools depot out of manifest scope (depotkey_scope.hpp).
 	const bool finalManaged = mergeManagedFlag(existing.managed, managed);
 	if (existing.depotId == depotId && existing.key == key
 	    && existing.appId == finalAppId && existing.managed == finalManaged)

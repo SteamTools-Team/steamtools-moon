@@ -10,7 +10,7 @@
 // `depots` block — provisionApp then bails ("buffer has no depots") and
 // Steam shows the title as 0 B.
 //
-// But the LuaTools per-game zip already shipped the depot manifest (now in
+// But the SteamTools per-game zip already shipped the depot manifest (now in
 // the ManifestStore) and the depot key (in our DepotKey cache), so we hold
 // everything Steam needs.  ManifestSynth rebuilds the missing `depots`
 // block from (depotId -> gid) pairs we already have on disk, in the exact

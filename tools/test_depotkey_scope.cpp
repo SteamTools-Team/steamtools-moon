@@ -66,7 +66,7 @@ int main()
 	      "AddedApp by depot id is in scope");
 
 	// The load-bearing case: a GetManifestRequestCode request can carry
-	// app_id=0, so neither AddedApp check matches even for a LuaTools depot.
+	// app_id=0, so neither AddedApp check matches even for a SteamTools depot.
 	// A key WE injected from the Lua script (managed) must still pull it in.
 	CHECK(depotInManifestScope(false, false, true, false),
 	      "Lua-managed depot key is in scope even when app_id is absent");
@@ -87,7 +87,7 @@ int main()
 	// The managed flag is STICKY across catalog writes.  A depot first
 	// imported from a Lua script (managed) must stay managed even when Steam
 	// later returns the same key in a legitimate response (observed) — else
-	// a LuaTools depot would silently drop out of scope mid-session.
+	// a SteamTools depot would silently drop out of scope mid-session.
 	using DepotKey::mergeManagedFlag;
 	CHECK(mergeManagedFlag(/*existing=*/false, /*incoming=*/false) == false,
 	      "observed then observed stays unmanaged");

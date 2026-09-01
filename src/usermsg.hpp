@@ -212,9 +212,9 @@ inline UiMessage messageFor(UserMsg m, Lang lang)
 
 		case UserMsg::GamePreparationFailed:
 			return { pt ? "O AppID {detail} tem dados de instalação incompletos. "
-			              "Adicione o jogo novamente pelo LuaTools antes de instalar."
+			              "Adicione o jogo novamente pelo SteamTools antes de instalar."
 			            : "AppID {detail} has incomplete install data. Re-add the game "
-			              "through LuaTools before installing.",
+			              "through SteamTools before installing.",
 			         Severity::Error };
 
 		case UserMsg::GamePreparationFailedBatch:

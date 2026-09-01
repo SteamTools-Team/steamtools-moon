@@ -7,7 +7,7 @@
 //
 //   * a clean file parses as-is (Outcome::ParsedAsIs) and is left untouched;
 //   * a file whose block-sequence items have inconsistent indentation (the
-//     known LuaTools AdditionalApps writer slip) is normalised via
+//     known SteamTools AdditionalApps writer slip) is normalised via
 //     ConfNormalize::repairSeqIndent and parsed from the fixed text
 //     (Outcome::Repaired). `repaired` carries the text the caller should
 //     persist so the user's game list survives and the file is clean for the

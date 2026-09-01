@@ -7,7 +7,7 @@
 // published here before depotcache, and the download hooks restore the exact
 // planned gid on demand.
 //
-// The LuaTools per-game zip ships a manifest for every depot (linux + windows
+// The SteamTools per-game zip ships a manifest for every depot (linux + windows
 // + macos).  The plugin extracts them into depotcache, but Steam can purge
 // them at any time.  ManifestStore keeps a copy under
 // ~/.config/SteamTools/manifests/<depot>_<gid>.manifest that Steam never
@@ -85,7 +85,7 @@ namespace ManifestStore
 	// Install-time selection continues to use bestArchivedGid() unchanged.
 	ArchivedGidIndex archivedGidIndex();
 
-	// Delete every archived manifest for the given depots (LuaTools
+	// Delete every archived manifest for the given depots (SteamTools
 	// remove-game / AdditionalApps pruning).
 	void purgeDepots(const std::vector<uint32_t>& depotIds);
 }

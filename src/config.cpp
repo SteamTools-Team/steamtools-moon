@@ -160,7 +160,7 @@ std::unordered_set<uint32_t> CConfig::discoverStPluginAppIds()
 }
 
 // Read manual/plugin AdditionalApps overrides from luaappids.yaml.  This
-// file is authored by the user or the LuaTools plugin; we only READ it (we
+// file is authored by the user or the SteamTools plugin; we only READ it (we
 // never mirror the discovered set back into it, which is what previously
 // let a bad pass persist as permanent pollution).  Entries are main-app
 // ids and are kept even when the id is also a managed depot (see
@@ -359,7 +359,7 @@ bool CConfig::loadSettings()
 {
 	// Load config.yaml WITHOUT ever letting a parser exception abort the client.
 	//
-	// A malformed config (most commonly the LuaTools AdditionalApps writer
+	// A malformed config (most commonly the SteamTools AdditionalApps writer
 	// leaving inconsistent list indentation) used to make YAML::LoadFile throw
 	// YAML::ParserException; under the release build that throw can escape the
 	// catch (the .cold-partition EH defect documented in config.hpp) and abort

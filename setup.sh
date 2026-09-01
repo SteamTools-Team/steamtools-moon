@@ -743,7 +743,7 @@ if [ "$GUARD_FAILS" -ge "$SLSM_GUARD_MAX_FAILS" ] || { [ "$guard_client_changed"
 			rm -f "$_r/appcache/appinfo.vdf" 2>/dev/null && guard_log "removed $_r/appcache/appinfo.vdf"
 		fi
 	done
-	guard_notify "steamtools-moon paused itself for this session because Steam kept failing to start. Steam is running normally - injection is retried the next time you reboot, or right away if you update the plugin from the LuaTools menu."
+	guard_notify "steamtools-moon paused itself for this session because Steam kept failing to start. Steam is running normally - injection is retried the next time you reboot, or right away if you update the plugin from the SteamTools menu."
 	guard_log "recovery mode latched for this session; Steam will launch unhooked until the next session or a payload update"
 	slsm_exec_vanilla "$@"
 fi
@@ -840,10 +840,10 @@ if [ "${XDG_SESSION_TYPE:-}" = "wayland" ]; then
 	done
 fi
 
-# Lumen (millennium-less LuaTools bridge): ensure Steam's CEF remote-debugging
+# Lumen (millennium-less SteamTools bridge): ensure Steam's CEF remote-debugging
 # endpoint is enabled, then launch the Lumen sidecar DETACHED and WITHOUT the
 # loader env (it must use its own static libs, not Steam's 32-bit runtime).
-# Lumen injects the LuaTools frontend via CDP and hosts the backend in-process.
+# Lumen injects the SteamTools frontend via CDP and hosts the backend in-process.
 # Single-instance guarded so a second wrapper invocation doesn't stack sidecars.
 LUMEN_DIR="$HOME/.local/share/Lumen"
 if [ -x "$LUMEN_DIR/lumen" ] && ! pgrep -f "$LUMEN_DIR/lumen" >/dev/null 2>&1; then

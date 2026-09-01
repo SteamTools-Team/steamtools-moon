@@ -429,7 +429,7 @@ void emitNode(std::string& out, const YAML::Node& node, int depth)
 //
 // Background: api.steamcmd.net returns the full depot list (e.g. for
 // dotAGE that's 638511=windows, 638512=macos, 638513=linux).  If the
-// LuaTools plugin only provided a key for the windows depot, Steam on
+// SteamTools plugin only provided a key for the windows depot, Steam on
 // a Linux client picks the linux depot, finds no key, and drops to
 // "0 mounted depots" — same observable bug as if appinfo were missing
 // entirely.
@@ -644,7 +644,7 @@ bool readValidatedCacheBufferLocked(uint32_t appId, std::string& wireOut,
 // have their PICS product-info gated behind an app access token Valve
 // DENIES to anonymous sessions, so the anonymous-CM buffer (and the
 // steamcmd fallback) come back with NO depots and provisioning would bail
-// — leaving Steam at 0 B.  But the LuaTools zip already gave us the depot
+// — leaving Steam at 0 B.  But the SteamTools zip already gave us the depot
 // key (DepotKey cache) and the depot manifest (ManifestStore), so we can
 // reconstruct the depots block ourselves: managed depots for this app,
 // each pointing at its best archived manifest gid, with config.oslist

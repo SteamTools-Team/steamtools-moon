@@ -2,7 +2,7 @@
 //
 // This is the glue that makes a malformed config.yaml never brick Steam:
 //   - a clean file parses as-is (untouched),
-//   - a file with inconsistent block-sequence indentation (the LuaTools writer
+//   - a file with inconsistent block-sequence indentation (the SteamTools writer
 //     slip) is normalised and parsed, and the caller is told to persist the
 //     fix (self-heal) so the user's game list survives,
 //   - a file that cannot be salvaged reports Failed so the caller falls back to
@@ -35,7 +35,7 @@ int main() {
     const std::string bad =
         "API: false\n"
         "AdditionalApps:\n"
-        "  - 4149320   # added via LuaTools\n"
+        "  - 4149320   # added via SteamTools\n"
         "- 381210\n"
         "- 489980\n"
         "LogLevel: 2\n";

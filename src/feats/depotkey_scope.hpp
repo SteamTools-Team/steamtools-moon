@@ -41,7 +41,7 @@ namespace DepotKey
 	// in a legitimate response (which recvDepotKey caches as observed).
 	// Used by saveKeyToCache when merging an incoming write with an existing
 	// on-disk/in-memory entry, so a passive re-observation never downgrades a
-	// LuaTools depot out of manifest scope.
+	// SteamTools depot out of manifest scope.
 	inline bool mergeManagedFlag(bool existingManaged, bool incomingManaged)
 	{
 		return existingManaged || incomingManaged;

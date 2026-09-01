@@ -418,7 +418,7 @@ namespace
 	}
 
 	// Find a locally-staged manifest for `depotId` whose gid differs from
-	// `planned` (i.e. the LuaTools zip's own manifest).  The directory is
+	// `planned` (i.e. the SteamTools zip's own manifest).  The directory is
 	// indexed once and refreshed only when its mtime changes; each lookup then
 	// checks at most the newest candidates instead of walking every manifest.
 	uint64_t findLocalAltGid(const std::string& depotcacheDir,
@@ -458,7 +458,7 @@ namespace
 		// Only content WE manage.  A merely-observed key (owned game / Proton
 		// runtime) must NOT pull the depot in here: redirectGid would archive
 		// it into the ManifestStore and could redirect an owned depot to a
-		// stale local gid.  The store holds LuaTools depots only.
+		// stale local gid.  The store holds SteamTools depots only.
 		return DepotKey::depotInManifestScope(
 		    appId   && g_config.isAddedAppId(appId),
 		    depotId && g_config.isAddedAppId(depotId),
@@ -594,7 +594,7 @@ namespace
 			legacy = ManifestStore::bestArchivedGid(depotId, manifestId);
 			if (!legacy)
 			{
-				// Last-resort migration for an old install whose LuaTools ZIP
+				// Last-resort migration for an old install whose SteamTools ZIP
 				// manifest exists only in depotcache. This scan runs solely
 				// after an exact failure, never once per PICS depot.
 				legacy = findLocalAltGid(dc, depotId, manifestId);

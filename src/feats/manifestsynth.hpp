@@ -14,7 +14,7 @@
 // such a title carries NO `depots` block.  provisionApp then bails
 // ("buffer has no depots") and Steam shows the app as 0 B.
 //
-// The data isn't actually missing, though: the LuaTools per-game zip
+// The data isn't actually missing, though: the SteamTools per-game zip
 // shipped the depot manifest (archived in the ManifestStore) and the depot
 // decryption key (in our DepotKey cache).  So we hold the depot id, its
 // manifest gid, and its key — everything Steam needs to plan + decrypt the

@@ -21,10 +21,10 @@ bool DLC::shouldUnlockDlc(uint32_t appId)
 	// every DLC queried while any game was active.  With the default empty
 	// blacklist that made DLC from ordinary, genuinely-owned games eligible
 	// for the local ownership override.  Scope the override to DLC ids
-	// discovered from LuaTools-managed base apps or explicitly declared under
+	// discovered from SteamTools-managed base apps or explicitly declared under
 	// a managed parent's DlcData instead.  This deliberately
 	// does not depend on ownership of the base app: adding an already-owned
-	// game through LuaTools must still enable its managed DLC set.
+	// game through SteamTools must still enable its managed DLC set.
 	if (!Apps::isAddedAppDlcId(appId))
 	{
 		return false;

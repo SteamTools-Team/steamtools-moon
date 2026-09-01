@@ -1,7 +1,7 @@
 // Regression guard for the "malformed AdditionalApps indentation bricks Steam"
 // bug.
 //
-// SYMPTOM: LuaTools adds a game; the SteamTools config.yaml ends up with a block
+// SYMPTOM: SteamTools adds a game; the SteamTools config.yaml ends up with a block
 // sequence whose items have INCONSISTENT indentation, e.g.
 //
 //     AdditionalApps:
@@ -60,7 +60,7 @@ int main() {
     const std::string bad =
         "API: false\n"
         "AdditionalApps:\n"
-        "  - 4149320   # added via LuaTools\n"
+        "  - 4149320   # added via SteamTools\n"
         "- 381210\n"
         "- 489980\n"
         "AppIds: null\n"

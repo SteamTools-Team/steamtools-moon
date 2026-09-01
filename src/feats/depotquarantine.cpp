@@ -138,7 +138,7 @@ namespace
 		return false;
 	}
 
-	// A depot is in scope only while WE supply its key (a LuaTools depot) and
+	// A depot is in scope only while WE supply its key (a SteamTools depot) and
 	// the app's stplug-in script is still installed.
 	bool inManagedScope(const DepotKey::SavedKey& key, uint32_t depotId)
 	{

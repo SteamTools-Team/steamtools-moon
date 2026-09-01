@@ -2,7 +2,7 @@
 
 // Last-resort text repair for a malformed SteamTools config.yaml.
 //
-// The LuaTools frontend edits the AdditionalApps block-list by hand. A writer
+// The SteamTools frontend edits the AdditionalApps block-list by hand. A writer
 // bug could leave the block with INCONSISTENT indentation (some items indented,
 // some flush-left), which yaml-cpp rejects for the WHOLE document
 // ("end of map not found") -> in the release build the throw can escape the

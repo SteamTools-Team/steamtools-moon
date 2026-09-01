@@ -44,7 +44,7 @@ namespace DepotKey
 		uint32_t appId  = 0;
 		uint32_t depotId = 0;
 		std::string key; // raw 32 bytes (binary, not hex)
-		// True when WE supplied this key from a Lua script (a LuaTools
+		// True when WE supplied this key from a Lua script (a SteamTools
 		// depot we manage); false when it was merely observed from a
 		// legitimate Steam response (an owned game / Proton runtime).
 		// Only managed keys put a depot into manifest scope.

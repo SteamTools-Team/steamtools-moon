@@ -11,7 +11,7 @@
 // The primary path stages the public GID (pics.cpp, synchronously, via the
 // external request-code providers gmrc.wudrm.com / manifest.steam.run).  When
 // those providers are down, the public manifest never lands on disk and the
-// install fails.  The LuaTools per-game zip, however, ships its own
+// install fails.  The SteamTools per-game zip, however, ships its own
 // `<depot>_<gid>.manifest` (extracted into depotcache/), which needs no
 // request code.  This hook notices that the planned (public) GID is not on
 // disk while a different GID for the same depot *is*, and rewrites the gid

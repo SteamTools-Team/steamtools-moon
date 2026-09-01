@@ -3,7 +3,7 @@
 # steamtools-moon auto-fix
 #
 # Runs when Lumen detects that steamtools-moon did NOT inject into the current
-# Steam session (the "Buy" button shows on games added via LuaTools). It:
+# Steam session (the "Buy" button shows on games added via SteamTools). It:
 #   1. downloads the LATEST steamtools-moon (Lumen) release asset,
 #   2. runs its setup.sh install — which stops Steam, installs the library and
 #      repairs EVERY *steam*.desktop launcher on the system (prompting for the
@@ -12,7 +12,7 @@
 #
 # Self-contained: fetched + run via `curl -fsSL <raw>/autofix.sh | bash`, so it
 # must not depend on any sibling file. Only touches steamtools-moon (not Lumen or
-# the LuaTools plugin).
+# the SteamTools plugin).
 #
 # Served from the repo's raw branch URL, so fixes go live without a release cut.
 # ============================================================================
@@ -122,5 +122,5 @@ else
 fi
 
 echo
-ok "Done. Your LuaTools games should now show Install/Play instead of Buy."
+ok "Done. Your SteamTools games should now show Install/Play instead of Buy."
 pause
