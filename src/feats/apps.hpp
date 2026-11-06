@@ -6,9 +6,8 @@
 #include <vector>
 
 class CAppOwnershipInfo;
-class CProtoBufMsgBase;
-class CMsgClientGamesPlayed;
-class CMsgClientPICSProductInfoRequest;
+class CNetPacket;
+class CSteamId;
 
 namespace Apps
 {
@@ -39,7 +38,7 @@ namespace Apps
 			automaticFilter, isGameOrApplication);
 	}
 
-	bool unlockApp(uint32_t appId, CAppOwnershipInfo* info, uint32_t ownerId);
+	bool unlockApp(uint32_t appId, CAppOwnershipInfo* info, const CSteamId& ownerId);
 	bool unlockApp(uint32_t appId, CAppOwnershipInfo* info);
 
 	bool checkAppOwnership(uint32_t appId, CAppOwnershipInfo* info);
@@ -56,7 +55,7 @@ namespace Apps
 	bool shouldDisableCDKey(uint32_t appId);
 	bool shouldDisableUpdates(uint32_t appId);
 
-	void sendGamesPlayed(CMsgClientGamesPlayed* msg);
-	void sendPICSInfoRequest(CMsgClientPICSProductInfoRequest* msg);
-	void sendMsg(CProtoBufMsgBase* msg);
+	void sendGamesPlayed(CNetPacket* packet);
+	void sendPICSInfoRequest(CNetPacket* packet);
+	void sendMsg(CNetPacket* packet);
 };

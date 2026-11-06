@@ -3,15 +3,15 @@
 # those patches against Steam's restore. No top-level side effects: only
 # function defs + defaults, so it is safe to source from setup.sh, the wrapper,
 # and tests. Callers set DC_TAG and WRAPPER (or accept the defaults below).
-: "${DC_TAG:=X-SteamToolsMoon-Patched=true}"
+: "${DC_TAG:=X-SLSteamMoon-Patched=true}"
 # Marks an entry we CREATED (a seeded autostart override) rather than patched in
 # place. Such files get no backup and are DELETED (not restored) on uninstall,
 # because the user never had them.
-: "${DC_SEED_TAG:=X-SteamToolsMoon-Seeded=true}"
+: "${DC_SEED_TAG:=X-SLSteamMoon-Seeded=true}"
 # Marks a minimal desktop entry created before Steam's data root exists. It is
 # intentionally tagged for ownership but remains a direct distro-installer
 # launcher until bootstrap is confirmed.
-: "${DC_PREBOOTSTRAP_TAG:=X-SteamToolsMoon-Prebootstrap=true}"
+: "${DC_PREBOOTSTRAP_TAG:=X-SLSteamMoon-Prebootstrap=true}"
 
 dc_is_prebootstrap_seed() {
 	[ -f "$1" ] && grep -qxF "$DC_PREBOOTSTRAP_TAG" "$1" 2>/dev/null
@@ -206,7 +206,7 @@ dc_migrate_legacy_file() {
 	local legacy="$1" S="${2:-}" original
 	[ -f "$legacy" ] || return 0
 	case "$legacy" in
-		*.steamtools-backup) original="${legacy%.steamtools-backup}" ;;
+		*.slssteam-backup) original="${legacy%.slssteam-backup}" ;;
 		*.steamtools-bak)    original="${legacy%.steamtools-bak}" ;;
 		*) return 0 ;;
 	esac
@@ -218,7 +218,7 @@ dc_migrate_legacy_dir() {
 	local dir="$1" S="${2:-}" legacy failed=0
 	[ -d "$dir" ] || return 0
 	for legacy in \
-		"$dir"/*steam*.desktop.steamtools-backup \
+		"$dir"/*steam*.desktop.slssteam-backup \
 		"$dir"/*steam*.desktop.steamtools-bak; do
 		[ -f "$legacy" ] || continue
 		dc_migrate_legacy_file "$legacy" "$S" || failed=1
@@ -228,7 +228,7 @@ dc_migrate_legacy_dir() {
 
 # dc_migrate_legacy_backups [--user|--system] — runs BEFORE repatching. It also
 # catches the critical case where steam.desktop was deleted when autostart was
-# disabled but steam.desktop.steamtools-backup was left behind and executable by
+# disabled but steam.desktop.slssteam-backup was left behind and executable by
 # KDE/systemd's XDG autostart generator.
 dc_migrate_legacy_backups() {
 	local mode="${1:---user}" desktop failed=0
@@ -638,6 +638,16 @@ dc_patch_one() {
 # symlinked .desktop as the raw filename + an untrusted link emblem). Steam may
 # restore a vanilla copy on a re-bootstrap; the per-launch/Lumen re-assert
 # re-patches it then.
+dc_activate_shortcut() {
+	local shortcut="$1"
+	chmod 0755 "$shortcut" 2>/dev/null || return 1
+	command -v gio >/dev/null 2>&1 \
+		&& gio set "$shortcut" metadata::trusted true >/dev/null 2>&1 || true
+	command -v xfdesktop >/dev/null 2>&1 \
+		&& xfdesktop --reload >/dev/null 2>&1 || true
+	return 0
+}
+
 dc_patch_shortcut() {
 	local sc="$1" bak
 	[ -e "$sc" ] || return 0          # never create a shortcut the user lacked
@@ -666,14 +676,12 @@ dc_patch_shortcut() {
 	case "$(dc_classify "$sc")" in
 		launcher|patched)
 			dc_patch_one "$sc"
-			chmod 0755 "$sc" 2>/dev/null || true
-			command -v gio >/dev/null 2>&1 && gio set "$sc" metadata::trusted true >/dev/null 2>&1 || true
+			dc_activate_shortcut "$sc" || true
 			;;
 		stub)
 			[ "${DC_STEAM_INSTALLED:-0}" = 1 ] || return 0
 			dc_patch_one "$sc"
-			chmod 0755 "$sc" 2>/dev/null || true
-			command -v gio >/dev/null 2>&1 && gio set "$sc" metadata::trusted true >/dev/null 2>&1 || true
+			dc_activate_shortcut "$sc" || true
 			;;
 	esac
 }
@@ -801,6 +809,14 @@ _dc_application_source() {
 	case "$name" in *.desktop) return 0 ;; *) return 1 ;; esac
 }
 
+# A dangling same-ID link still shadows a valid system desktop entry, but has
+# no readable metadata to preserve or patch. Discard it so the normal seeded
+# shadow path can publish a regular, working entry.
+_dc_discard_dangling_application_shadow() {
+	[ -L "$1" ] && [ ! -e "$1" ] || return 0
+	rm -f -- "$1"
+}
+
 # _dc_publish_application_shadow <source> <target> <launcher|stub> — prepare the
 # complete shadow in its destination directory, mark ownership before rewrite,
 # validate through dc_patch_one, then publish by same-directory atomic rename.
@@ -902,6 +918,7 @@ dc_seed_application_shadows() {
 			   dc_is_prebootstrap_seed "$target"; then
 				continue
 			fi
+			_dc_discard_dangling_application_shadow "$target" || continue
 			if [ -e "$target" ] || [ -L "$target" ]; then
 				[ -r "$target" ] || chmod 0644 "$target" 2>/dev/null || true
 				dc_patch_one "$target" 2>/dev/null || true
@@ -952,7 +969,7 @@ dc_seed_autostart_override() {
 	fi
 	dc_patch_one "$user_as"
 	# Defensive cleanup for an interrupted older seeding implementation.
-	rm -f "$user_as.steamtools-backup" "$user_as.steamtools-bak" "$(dc_backup_path "$user_as")"
+	rm -f "$user_as.slssteam-backup" "$user_as.steamtools-bak" "$(dc_backup_path "$user_as")"
 }
 
 # Guardian commands are injectable so tests can observe lock/cache behavior.
@@ -1076,6 +1093,7 @@ dc_guardian_seed_application_shadows() {
 			seen="${seen}${seen:+
 }$id"
 			target="$user_dir/$id"
+			_dc_discard_dangling_application_shadow "$target" || continue
 			[ -e "$target" ] || [ -L "$target" ] && continue
 			if _dc_publish_application_shadow "$source" "$target" "$kind" \
 			   && _dc_file_has_primary_wrapper_exec "$target"; then
@@ -1094,7 +1112,7 @@ dc_guardian_seed_application_shadows() {
 dc_guardian_migrate_dir() {
 	local dir="$1" legacy result
 	[ -d "$dir" ] || return 0
-	for legacy in "$dir"/*steam*.desktop.steamtools-backup \
+	for legacy in "$dir"/*steam*.desktop.slssteam-backup \
 	              "$dir"/*steam*.desktop.steamtools-bak; do
 		[ -f "$legacy" ] || continue
 		if dc_migrate_legacy_file "$legacy"; then result=0; else result=2; fi
@@ -1143,9 +1161,8 @@ dc_guardian_patch_shortcut() {
 	esac
 	before="$(dc_guardian_fingerprint "$shortcut")"
 	if dc_patch_one "$shortcut" && _dc_file_has_primary_wrapper_exec "$shortcut"; then
-		chmod 0755 "$shortcut" 2>/dev/null || { dc_guardian_record_result other 2; return 0; }
-		command -v gio >/dev/null 2>&1 \
-			&& gio set "$shortcut" metadata::trusted true >/dev/null 2>&1 || true
+		dc_activate_shortcut "$shortcut" \
+			|| { dc_guardian_record_result other 2; return 0; }
 		after="$(dc_guardian_fingerprint "$shortcut")"
 		if [ "$before" = "$after" ]; then result=1; else result=0; fi
 	else
@@ -1263,7 +1280,7 @@ dc_forget_policy() {
 # pass. A fingerprint match means the inputs are identical, so the full pass
 # would be a no-op — it can never mask real drift:
 #   * each candidate directory's own mtime, so an added/removed/renamed entry
-#     invalidates (a new donor, a resurrected legacy .steamtools-backup, …);
+#     invalidates (a new donor, a resurrected legacy .slssteam-backup, …);
 #   * name + size + mtime + mode + type of every *.desktop in those directories,
 #     so ANY edit invalidates — a hand-broken launcher always changes its mtime
 #     and normally its size too, and a symlink appearing is a type change;
@@ -1274,7 +1291,7 @@ dc_forget_policy() {
 #     full pass even on an unchanged desktop.
 # Callers that must never take the fast path (the installer, an explicit repair)
 # set DC_FORCE=1 / pass --force to the CLI.
-DC_FINGERPRINT_VERSION=2
+DC_FINGERPRINT_VERSION=3
 
 # Where the last successful pass' digest lives. One file per scope: the guardian
 # (mandatory, user-only), the legacy best-effort --user pass and the optional
@@ -1321,7 +1338,7 @@ dc_coverage_fingerprint() {
 		fi
 		for dir in "${dirs[@]}"; do
 			files+=("$dir"/*.desktop \
-			        "$dir"/*steam*.desktop.steamtools-backup \
+			        "$dir"/*steam*.desktop.slssteam-backup \
 			        "$dir"/*steam*.desktop.steamtools-bak)
 			named+=("$dir"/*steam*.desktop)
 		done
@@ -1413,7 +1430,7 @@ dc_guardian_write_cached_note() {
 # dc_guardian_run — serialized, mandatory user-only reconciliation. Lock
 # contention is a successful no-op. No system mutation or sudo path is reachable.
 dc_guardian_run() {
-	local runtime uid lock result status=0
+	local runtime uid lock result shortcut status=0
 	runtime="${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}"
 	uid="${UID:-$(id -u)}"
 	lock="${runtime%/}/steamtools-desktop-guardian-${uid}.lock"
@@ -1430,6 +1447,15 @@ dc_guardian_run() {
 	# guardian is kicked by the wrapper at every launch, and on an unchanged
 	# desktop the full pass costs seconds of CPU to change nothing.
 	if dc_coverage_unchanged guardian --user; then
+		# GIO trust lives outside the file metadata covered by the cheap digest
+		# and desktop environments may clear it independently. Reassert it for
+		# the one existing shortcut without paying for a full reconciliation.
+		shortcut="$(dc_desktop_dir)/steam.desktop"
+		if [ -f "$shortcut" ] && [ ! -L "$shortcut" ] \
+		   && _dc_file_has_primary_wrapper_exec "$shortcut"; then
+			command -v gio >/dev/null 2>&1 \
+				&& gio set "$shortcut" metadata::trusted true >/dev/null 2>&1 || true
+		fi
 		dc_guardian_write_cached_note || true
 		dc_guardian_write_summary || true
 		"$DC_FLOCK" -u 9 >/dev/null 2>&1 || true
@@ -1524,14 +1550,14 @@ dc_run() {
 dc_restore_one() {
 	local f="$1" S="${2:-}" bak
 	# Accept and immediately centralize both historical adjacent suffixes.
-	dc_migrate_legacy_file "$f.steamtools-backup" "$S" || true
+	dc_migrate_legacy_file "$f.slssteam-backup" "$S" || true
 	dc_migrate_legacy_file "$f.steamtools-bak" "$S" || true
 	bak="$(dc_backup_path "$f")"
 	# A seeded override was created by us — the user never had it — so remove it
 	# (and any stray backup) rather than restoring a vanilla copy.
 	if [ -f "$f" ] && grep -qxF "$DC_SEED_TAG" "$f" 2>/dev/null; then
 		$S rm -f -- "$f" 2>/dev/null || return 1
-		rm -f -- "$bak" "$f.steamtools-backup" "$f.steamtools-bak" 2>/dev/null
+		rm -f -- "$bak" "$f.slssteam-backup" "$f.steamtools-bak" 2>/dev/null
 		return 0
 	fi
 	if [ -L "$f" ]; then

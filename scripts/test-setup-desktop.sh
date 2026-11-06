@@ -22,7 +22,7 @@ ck "setup creates the central desktop-backup directory" \
 ck "setup invokes legacy-backup migration before desktop repatch" \
    "$(grep -q 'dc_migrate_legacy_backups' "$HERE/setup.sh" && echo yes || echo no)"
 ck "desktop helper no longer assigns adjacent backups" \
-   "$(! grep -q 'bak="\$f.steamtools-backup"' "$HERE/tools/desktop-coverage.lib.sh" && echo yes || echo no)"
+   "$(! grep -q 'bak="\$f.slssteam-backup"' "$HERE/tools/desktop-coverage.lib.sh" && echo yes || echo no)"
 ck "immutable setup skips the system desktop database refresh" \
    "$(grep -q '\[ "\$system_desktop_changed" = 1 \].*command -v sudo' "$HERE/setup.sh" && echo yes || echo no)"
 

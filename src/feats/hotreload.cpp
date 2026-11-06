@@ -60,6 +60,21 @@ HotReloadState::Store& membershipStore()
 	return state;
 }
 
+std::unordered_set<std::uint32_t> publishAppInfoScopes(
+	const std::unordered_set<std::uint32_t>& managedAppIds,
+	const std::vector<std::uint32_t>& plannerAppIds)
+{
+	const auto authoritative = AppInfoProvision::locallyAuthoritativeApps(
+		managedAppIds, g_config.addedAppIds.get());
+	const auto guardedAppIds = HotReloadPublishPolicy::guardedAppInfoIds(
+		managedAppIds, plannerAppIds, authoritative);
+	// Publish authority first: a newly guarded record must never be observable
+	// with a real SHA during the gap before its skip policy becomes active.
+	AppInfoState::publishAuthoritative(authoritative);
+	(void)membershipStore().publish(guardedAppIds);
+	return authoritative;
+}
+
 std::vector<std::uint32_t> difference(
 	const std::unordered_set<std::uint32_t>& left,
 	const std::unordered_set<std::uint32_t>& right)
@@ -126,9 +141,14 @@ bool publishLocked(
 	if (HotReloadPublishPolicy::shouldAwaitDlcMetadata(
 		initialPublication, !added.empty()))
 		metadataPendingBaseIds.insert(added.begin(), added.end());
+	// Bases whose local inputs changed this reload bypass the per-app memo:
+	// `added` are new, `locallyChanged` are those whose content fingerprint
+	// moved (e.g. a depot-key edit that does not shift a cache-file mtime).
+	std::unordered_set<std::uint32_t> forceRecompute(added.begin(), added.end());
+	forceRecompute.insert(locallyChanged.begin(), locallyChanged.end());
 	auto built = HotReloadInputs::buildFromCaches(
 		nextGeneration, managedAppIds, metadataPendingBaseIds,
-		state.metadataDeferredBaseIds, readyBaseIds);
+		state.metadataDeferredBaseIds, readyBaseIds, forceRecompute);
 	if (!built.valid)
 	{
 		if (g_pLog != nullptr)
@@ -167,16 +187,11 @@ bool publishLocked(
 
 	// Guard desired bases immediately, but keep them outside package ownership
 	// until their authoritative local appinfo is live.
-	std::unordered_set<std::uint32_t> guardedAppIds(
-		managedAppIds.begin(), managedAppIds.end());
-	guardedAppIds.insert(
-		built.snapshot.appIds.begin(), built.snapshot.appIds.end());
-	(void)membershipStore().publish(guardedAppIds);
-	std::unordered_set<std::uint32_t> authoritativeAppIds;
-	for (const std::uint32_t appId : managedAppIds)
-		if (AppInfoProvision::isSynthesizedApp(appId))
-			authoritativeAppIds.insert(appId);
-	AppInfoState::publishAuthoritative(authoritativeAppIds);
+	const auto authoritative =
+		publishAppInfoScopes(managedAppIds, built.snapshot.appIds);
+	built.snapshot.appInfoRequestIds =
+		HotReloadPublishPolicy::nonAuthoritativeAppInfoRequestIds(
+			std::move(built.snapshot.appInfoRequestIds), authoritative);
 	for (const std::uint32_t appId : added)
 		LibraryRemoval::cancel(appId);
 
@@ -337,25 +352,47 @@ bool publishPreparedBase(
 {
 	try
 	{
+		// This is the step that moves a freshly provisioned app into the ready
+		// set, and only a ready app enters package ownership. Every rejection
+		// below therefore leaves the game licensed-but-invisible, so name the
+		// reason: silent returns here made "provisioning succeeded but the game
+		// never showed up" impossible to tell apart from a provisioning failure.
+		const auto reject = [baseAppId](const char* reason)
+		{
+			if (g_pLog != nullptr)
+			{
+				g_pLog->info(
+					"HotReload: prepared base=%u not published (%s); it stays "
+					"outside package ownership until the next publication\n",
+					baseAppId, reason);
+			}
+			return false;
+		};
+
 		if (baseAppId == 0) return false;
 		CoordinatorState& state = coordinator();
 		std::lock_guard<std::mutex> coordinatorLock(state.mutex);
-		if (!state.initialized ||
-			state.managedAppIds.count(baseAppId) == 0 ||
-			state.readyBaseIds.count(baseAppId) != 0) return false;
+		if (!state.initialized) return reject("hot reload is not initialized yet");
+		if (state.managedAppIds.count(baseAppId) == 0)
+			return reject("the app is no longer managed");
+		// Already published; not a failure and not worth a line per refresh.
+		if (state.readyBaseIds.count(baseAppId) != 0) return false;
 
 		// Lock order matches the other completion path. It rejects stale work if
 		// the app was removed/re-added while its cache was being prepared.
 		std::lock_guard<std::mutex> passLock(
 			AppInfoProvision::provisioningPassMutex());
 		const auto managed = g_config.managedAppIds.get();
-		if (managed != state.managedAppIds ||
-			managed.count(baseAppId) == 0) return false;
+		if (managed != state.managedAppIds)
+			return reject("the managed set changed during preparation");
+		if (managed.count(baseAppId) == 0)
+			return reject("the app was removed during preparation");
 		{
 			std::lock_guard<std::mutex> publicationLock(
 				AppInfoProvision::cachePublicationMutex());
 			if (AppInfoProvision::cachePublicationGenerationLocked(baseAppId) !=
-				expectedManagedGeneration) return false;
+				expectedManagedGeneration)
+				return reject("the app was removed and re-added during preparation");
 		}
 
 		auto readyBaseIds = state.readyBaseIds;
@@ -364,26 +401,28 @@ bool publishPreparedBase(
 		auto built = HotReloadInputs::buildFromCaches(
 			nextGeneration, managed, state.metadataPendingBaseIds,
 			state.metadataDeferredBaseIds, readyBaseIds);
-		if (!built.valid ||
-			std::find(built.snapshot.appIds.begin(),
+		if (!built.valid) return reject("the snapshot exceeds its bounded capacity");
+		if (std::find(built.snapshot.appIds.begin(),
 				built.snapshot.appIds.end(), baseAppId) ==
-			built.snapshot.appIds.end()) return false;
+			built.snapshot.appIds.end())
+			return reject("its local cache produced no planner entry");
 
 		built.snapshot.addedAppIds = {baseAppId};
 		// This record was just loaded from the normalized local cache. A public
 		// request here is redundant and can replace it with an empty record.
 		built.snapshot.appInfoRequestIds.clear();
 
-		std::unordered_set<std::uint32_t> guardedAppIds(
-			managed.begin(), managed.end());
-		guardedAppIds.insert(
-			built.snapshot.appIds.begin(), built.snapshot.appIds.end());
-		(void)membershipStore().publish(guardedAppIds);
+		const auto authoritative =
+			publishAppInfoScopes(managed, built.snapshot.appIds);
+		built.snapshot.appInfoRequestIds =
+			HotReloadPublishPolicy::nonAuthoritativeAppInfoRequestIds(
+				std::move(built.snapshot.appInfoRequestIds), authoritative);
 		LibraryRemoval::cancel(baseAppId);
 
 		const OwnerWork::Mode mode =
 			OwnerWork::submitManagedState(built.snapshot);
-		if (mode == OwnerWork::Mode::Abandoned) return false;
+		if (mode == OwnerWork::Mode::Abandoned)
+			return reject("the owner work queue is tearing down");
 
 		state.readyBaseIds = std::move(readyBaseIds);
 		state.generation = nextGeneration;
@@ -639,11 +678,11 @@ bool publishMetadataCompletion(
 			return true;
 		}
 
-		std::unordered_set<std::uint32_t> guardedAppIds(
-			managed.begin(), managed.end());
-		guardedAppIds.insert(
-			built.snapshot.appIds.begin(), built.snapshot.appIds.end());
-		(void)membershipStore().publish(guardedAppIds);
+		const auto authoritative =
+			publishAppInfoScopes(managed, built.snapshot.appIds);
+		built.snapshot.appInfoRequestIds =
+			HotReloadPublishPolicy::nonAuthoritativeAppInfoRequestIds(
+				std::move(built.snapshot.appInfoRequestIds), authoritative);
 		const OwnerWork::Mode mode = OwnerWork::submitManagedState(built.snapshot);
 		if (mode == OwnerWork::Mode::Abandoned) return false;
 
@@ -702,6 +741,7 @@ void shutdown() noexcept
 		state.generation = 0;
 		state.hasLastSnapshot = false;
 		state.lastSnapshot = {};
+		HotReloadInputs::clearInputMemo();
 	}
 	catch (...)
 	{

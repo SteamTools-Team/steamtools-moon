@@ -5,6 +5,7 @@
 #include "depotkey_import.hpp"
 #include "depotkey_index.hpp"
 #include "appinfo_provision.hpp"
+#include "stats_policy.hpp"
 
 #include "../config.hpp"
 #include "../config_discovery.hpp"
@@ -20,7 +21,6 @@
 #include "yaml-cpp/emittermanip.h"
 #include "yaml-cpp/yaml.h"
 
-#include <cctype>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -247,6 +247,47 @@ bool isManagedDepot(uint32_t depotId)
 	return k.managed && k.key.size() == 32;
 }
 
+bool manifestInManagedScope(uint32_t appId, uint32_t depotId,
+	                         bool depotHasPin, uint32_t knownContentAppId)
+{
+	const auto key = getCachedKey(depotId);
+	uint32_t baseAppId = 0;
+	if (appId && g_config.isAddedAppId(appId))
+		baseAppId = appId;
+	else if (key.appId && g_config.isAddedAppId(key.appId))
+		baseAppId = key.appId;
+	else if (depotId && g_config.isAddedAppId(depotId))
+		baseAppId = depotId;
+
+	uint32_t depotDlcAppId = knownContentAppId;
+	if (!depotDlcAppId && baseAppId)
+	{
+		std::string wire;
+		if (AppInfoProvision::readValidatedCacheBuffer(baseAppId, wire))
+		{
+			depotDlcAppId = AppInfoProvision::dlcAppIdForDepot(
+				wire, baseAppId, depotId);
+		}
+	}
+	const uint32_t contentAppId = manifestContentAppId(
+		baseAppId, appId, key.appId, depotDlcAppId);
+	const bool nativeLicense = contentAppId &&
+		StatsPolicy::hasNativeLicense(contentAppId);
+	if (nativeLicense && g_pLog)
+	{
+		g_pLog->infoOnce(
+			"ManifestScope: app=%u content=%u depot=%u has a native license; using Steam's manifest path\n",
+			baseAppId, contentAppId, depotId);
+	}
+
+	return depotInManifestScope(
+		baseAppId != 0,
+		depotId && g_config.isAddedAppId(depotId),
+		key.managed && key.key.size() == 32,
+		depotHasPin,
+		nativeLicense);
+}
+
 std::vector<uint32_t> managedDepotsForApp(uint32_t appId)
 {
 	std::vector<uint32_t> out;
@@ -466,9 +507,9 @@ void onStartup()
 }
 
 
-void recvDepotKey(CMsgClientGetDepotDecryptionKeyResponse* resp)
+bool recvDepotKey(CMsgClientGetDepotDecryptionKeyResponse* resp)
 {
-	if (!resp) return;
+	if (!resp) return false;
 
 	uint32_t appId = 0;
 	{
@@ -481,53 +522,71 @@ void recvDepotKey(CMsgClientGetDepotDecryptionKeyResponse* resp)
 		}
 	}
 
+	const uint32_t depotId = resp->depot_id();
+	const bool eresultOk = resp->eresult() == ERESULT_OK;
+	const bool okKeyIs32 = resp->depot_encryption_key().size() == 32;
+
+	// The cache lookup is only needed on the error path; defer it so a normal
+	// OK response never pays for it.
+	SavedKey cached;
+	bool haveCachedKey = false;
+	if (!eresultOk)
+	{
+		cached = getCachedKey(depotId);
+		haveCachedKey = cached.depotId != 0 && cached.key.size() == 32;
+	}
+	const bool isAddedDepot = !eresultOk && g_config.isAddedAppId(depotId);
+
+	const auto action = DepotKey::classifyRecv(
+		eresultOk, okKeyIs32, haveCachedKey, isAddedDepot);
+
 	g_pLog->debug("DepotKey: incoming response for depot=%u eresult=%u keysize=%zu (correlated app=%u)\n",
-	              resp->depot_id(), resp->eresult(),
+	              depotId, resp->eresult(),
 	              resp->depot_encryption_key().size(), appId);
 
-	if (resp->eresult() == ERESULT_OK)
+	switch (action)
 	{
-		if (resp->depot_encryption_key().size() == 32)
-		{
+		case DepotKey::RecvAction::CacheObserved:
 			// Observed from a legitimate Steam response — cache it for
 			// possible substitution, but mark it unmanaged so it does NOT
 			// drag an owned game / runtime into our manifest scope.
-			saveKeyToCache(appId, resp->depot_id(), resp->depot_encryption_key(), /*managed=*/false);
+			saveKeyToCache(appId, depotId, resp->depot_encryption_key(), /*managed=*/false);
+			return false;
+
+		case DepotKey::RecvAction::SubstituteCached:
+		{
+			g_pLog->infoOnce("DepotKey: substituting cached key for depot %u (Steam said eresult=%u)\n",
+			             depotId, resp->eresult());
+			CMsgClientGetDepotDecryptionKeyResponse fresh;
+			fresh.set_eresult(ERESULT_OK);
+			fresh.set_depot_id(depotId);
+			fresh.set_depot_encryption_key(cached.key);
+			resp->ParseFromString(fresh.SerializeAsString());
+			return true;
 		}
-		return;
+
+		case DepotKey::RecvAction::SynthZero:
+		{
+			const std::string zeroKey(32, '\0');
+			g_pLog->infoOnce("DepotKey: synthesising zero key for AdditionalApps depot %u (Steam said eresult=%u)\n",
+			             depotId, resp->eresult());
+			CMsgClientGetDepotDecryptionKeyResponse fresh;
+			fresh.set_eresult(ERESULT_OK);
+			fresh.set_depot_id(depotId);
+			fresh.set_depot_encryption_key(zeroKey);
+			resp->ParseFromString(fresh.SerializeAsString());
+			return true;
+		}
+
+		case DepotKey::RecvAction::None:
+		default:
+			if (!eresultOk)
+			{
+				g_pLog->debug("DepotKey: no cached key for depot %u (Steam said eresult=%u)\n",
+				              depotId, resp->eresult());
+			}
+			return false;
 	}
-
-	auto cached = getCachedKey(resp->depot_id());
-	if (cached.depotId != 0 && cached.key.size() == 32)
-	{
-		g_pLog->infoOnce("DepotKey: substituting cached key for depot %u (Steam said eresult=%u)\n",
-		             resp->depot_id(), resp->eresult());
-
-		CMsgClientGetDepotDecryptionKeyResponse fresh;
-		fresh.set_eresult(ERESULT_OK);
-		fresh.set_depot_id(resp->depot_id());
-		fresh.set_depot_encryption_key(cached.key);
-		resp->ParseFromString(fresh.SerializeAsString());
-		return;
-	}
-
-	const uint32_t depotId = resp->depot_id();
-	const bool isAdditional = g_config.isAddedAppId(depotId);
-	if (isAdditional)
-	{
-		const std::string zeroKey(32, '\0');
-		g_pLog->infoOnce("DepotKey: synthesising zero key for AdditionalApps depot %u (Steam said eresult=%u)\n",
-		             depotId, resp->eresult());
-		CMsgClientGetDepotDecryptionKeyResponse fresh;
-		fresh.set_eresult(ERESULT_OK);
-		fresh.set_depot_id(depotId);
-		fresh.set_depot_encryption_key(zeroKey);
-		resp->ParseFromString(fresh.SerializeAsString());
-		return;
-	}
-
-	g_pLog->debug("DepotKey: no cached key for depot %u (Steam said eresult=%u)\n",
-	              depotId, resp->eresult());
 }
 
 void sendDepotKey(CMsgClientGetDepotDecryptionKey* req)

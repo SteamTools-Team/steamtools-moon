@@ -844,12 +844,12 @@ bool loadCachedBuffer(const std::string& metaPath, uint32_t expectedAppId,
 
 std::string appInfoLockPath(const std::string& path)
 {
-	return path + ".steamtools.lock";
+	return path + ".slssteam.lock";
 }
 
 std::string rollbackPath(const std::string& path)
 {
-	return path + ".steamtools-previous";
+	return path + ".slssteam-previous";
 }
 
 bool hasV41Magic(const std::string& path)
@@ -863,7 +863,7 @@ bool hasV41Magic(const std::string& path)
 
 std::string recoveryPath(const std::string& path)
 {
-	return path + ".steamtools-corrupt." +
+	return path + ".slssteam-corrupt." +
 		std::to_string(static_cast<long long>(std::time(nullptr))) + "." +
 		std::to_string(static_cast<long long>(::getpid()));
 }
@@ -972,7 +972,7 @@ bool publishCheckedIfUnchanged(const std::string& path,
 		return false;
 	}
 	static std::atomic<unsigned long> validationSequence{0};
-	const std::string validationPath = path + ".steamtools-validate." +
+	const std::string validationPath = path + ".slssteam-validate." +
 		std::to_string(static_cast<long long>(::getpid())) + "." +
 		std::to_string(validationSequence.fetch_add(1, std::memory_order_relaxed));
 	if (!AtomicFile::write(validationPath,
@@ -1079,8 +1079,13 @@ int injectAllCached(const std::string& path)
 	const auto cacheDir = g_config.getDir() + "/cache";
 	if (!std::filesystem::exists(cacheDir)) return 0;
 
+	// Contention is the only reason to stand down. This is the boot splice: it
+	// is the single thing that makes a managed app visible on the next start, so
+	// an untrustworthy lock path must not silently cost the whole pass. The
+	// publish below is conditional on the file identity captured after the read,
+	// so proceeding without a trusted lock cannot clobber a competing writer.
 	ProcessLock::FileLock lock(appInfoLockPath(path));
-	if (!lock.acquired())
+	if (lock.heldByAnother())
 	{
 		g_pLog->info("AppInfoVdf: another writer owns %s; skipping cache splice\n",
 		              appInfoLockPath(path).c_str());
@@ -1088,7 +1093,7 @@ int injectAllCached(const std::string& path)
 	}
 
 	ProcessLock::FileLock cacheLock(AppInfoProvision::cacheLockPath(), false);
-	if (!cacheLock.acquired())
+	if (cacheLock.heldByAnother())
 	{
 		g_pLog->info("AppInfoVdf: unable to lock provision cache; skipping cache splice\n");
 		return 0;
@@ -1100,6 +1105,13 @@ int injectAllCached(const std::string& path)
 	{
 		g_pLog->warn("AppInfoVdf: refusing to modify %s: %s\n",
 		             path.c_str(), readError.c_str());
+		return 0;
+	}
+	AtomicFile::FileIdentity inputIdentity{};
+	if (!AtomicFile::readIdentity(path, inputIdentity))
+	{
+		g_pLog->warn("AppInfoVdf: cannot identify %s for the cache splice\n",
+		             path.c_str());
 		return 0;
 	}
 
@@ -1175,8 +1187,12 @@ int injectAllCached(const std::string& path)
 	}
 	if (changed)
 	{
+		// Keep the rollback snapshot readWithRecovery() restores from, then
+		// publish conditionally. The unconditional write this replaced was the
+		// reason the lock had to be treated as mandatory here.
 		std::string writeError;
-		if (!publishChecked(path, file, writeError))
+		if (!snapshotBeforeWrite(path, writeError) ||
+			!publishCheckedIfUnchanged(path, inputIdentity, file, writeError))
 		{
 			g_pLog->warn("AppInfoVdf: transaction aborted after %d entries: %s\n",
 			             injected, writeError.c_str());
@@ -1195,16 +1211,41 @@ int injectCachedApps(const std::string& path,
 {
 	if (requestedApps.empty()) return 0;
 
+	// Skip only for real contention. An unusable lock path used to abort the
+	// whole live splice silently, which left the hot-added app without an
+	// appinfo entry until the next Steam restart. The write below is a
+	// compare-and-swap on the file identity, so proceeding without a trusted
+	// lock cannot corrupt the file: a competing writer changes the identity and
+	// the publish aborts cleanly instead.
 	ProcessLock::FileLock lock(appInfoLockPath(path));
-	if (!lock.acquired()) return 0;
+	if (lock.heldByAnother())
+	{
+		g_pLog->info("AppInfoVdf: another writer owns %s; skipping live splice\n",
+		             appInfoLockPath(path).c_str());
+		return 0;
+	}
 	ProcessLock::FileLock cacheLock(AppInfoProvision::cacheLockPath(), false);
-	if (!cacheLock.acquired()) return 0;
+	if (cacheLock.heldByAnother())
+	{
+		g_pLog->info("AppInfoVdf: provision cache is busy; skipping live splice\n");
+		return 0;
+	}
 
 	AppInfoFile file;
 	std::string readError;
-	if (!readWithRecovery(path, file, readError)) return 0;
+	if (!readWithRecovery(path, file, readError))
+	{
+		g_pLog->warn("AppInfoVdf: cannot read %s for the live splice: %s\n",
+		             path.c_str(), readError.c_str());
+		return 0;
+	}
 	AtomicFile::FileIdentity inputIdentity{};
-	if (!AtomicFile::readIdentity(path, inputIdentity)) return 0;
+	if (!AtomicFile::readIdentity(path, inputIdentity))
+	{
+		g_pLog->warn("AppInfoVdf: cannot identify %s for the live splice\n",
+		             path.c_str());
+		return 0;
+	}
 
 	const auto managed = g_config.managedAppIds.get();
 	const auto cacheDir = g_config.getDir() + "/cache";
@@ -1217,11 +1258,20 @@ int injectCachedApps(const std::string& path,
 			std::to_string(appId) + ".yaml";
 		CachedBuffer cb;
 		std::string err;
-		if (!loadCachedBuffer(metaPath, appId, cb, err)) continue;
+		if (!loadCachedBuffer(metaPath, appId, cb, err))
+		{
+			g_pLog->warn("AppInfoVdf: live splice rejected cache pair for "
+			             "app=%u: %s\n", appId, err.c_str());
+			continue;
+		}
 		bool entryChanged = false;
 		if (!mergeAppImpl(file, cb.appid, cb.change_number, cb.sha, cb.buffer,
 		                  entryChanged, err))
+		{
+			g_pLog->warn("AppInfoVdf: live splice could not merge app=%u: %s\n",
+			             appId, err.c_str());
 			continue;
+		}
 		++injected;
 		changed = changed || entryChanged;
 	}
@@ -1255,8 +1305,16 @@ int injectValidatedMetadataAppsGuarded(
 {
 	if (metadataApps.empty()) return 0;
 
+	// Contention is the only reason to stand down; the publish below is a
+	// compare-and-swap on the file identity, so an untrustworthy lock path does
+	// not have to cost us the transaction.
 	ProcessLock::FileLock lock(appInfoLockPath(path));
-	if (!lock.acquired()) return 0;
+	if (lock.heldByAnother())
+	{
+		g_pLog->info("AppInfoVdf: another writer owns %s; skipping DLC metadata "
+		             "splice\n", appInfoLockPath(path).c_str());
+		return 0;
+	}
 	if (guard != nullptr && !guard(context)) return 0;
 
 	AppInfoFile file;
@@ -1265,10 +1323,19 @@ int injectValidatedMetadataAppsGuarded(
 	AtomicFile::FileIdentity inputIdentity{};
 	if (!AtomicFile::readIdentity(path, inputIdentity)) return 0;
 
+	// One bad record must not cost every other app its DLC. Aborting the batch
+	// here discarded the whole splice for every managed base, and did it without
+	// a log line. Account for the entries that are now present instead, and let
+	// the caller compare that against what it asked for.
 	bool changed = false;
+	int accounted = 0;
 	for (const MetadataApp& app : metadataApps)
 	{
-		if (app.appid == 0) return 0;
+		if (app.appid == 0)
+		{
+			g_pLog->warn("AppInfoVdf: DLC metadata record has no appid; skipped\n");
+			continue;
+		}
 		const bool alreadyPresent = std::any_of(
 			file.apps.begin(), file.apps.end(),
 			[&app](const AppEntry& entry) { return entry.appid == app.appid; });
@@ -1277,12 +1344,19 @@ int injectValidatedMetadataAppsGuarded(
 			// Never downgrade an entry supplied by Steam (or a previous complete
 			// source) to metadata-only data: it may contain owned DLC depots,
 			// launch configuration, or tokens that this safe record strips.
+			// Deliberately skipped, so it still counts as accounted for.
+			++accounted;
 			continue;
 		}
 		bool entryChanged = false;
 		if (!mergeAppImpl(file, app.appid, app.changeNumber, app.sha,
 		                  app.wireBuffer, entryChanged, error))
-			return 0;
+		{
+			g_pLog->warn("AppInfoVdf: DLC metadata merge failed for app=%u: %s\n",
+			             app.appid, error.c_str());
+			continue;
+		}
+		++accounted;
 		changed = changed || entryChanged;
 	}
 	if (changed && !publishCheckedIfUnchanged(
@@ -1292,7 +1366,7 @@ int injectValidatedMetadataAppsGuarded(
 		             error.c_str());
 		return 0;
 	}
-	return static_cast<int>(metadataApps.size());
+	return accounted;
 }
 
 #ifdef APPINFO_VDF_TESTING

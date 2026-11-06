@@ -35,16 +35,16 @@ namespace
 	Updater::cache::RefreshGate g_refreshGate;
 
 	constexpr const char* kUpdatesUrl =
-	    "https://raw.githubusercontent.com/AceSLS/SLSsteam/refs/heads/main/res/updates.yaml";
+	    "https://raw.githubusercontent.com/SteamTools-Team/steamtools-moon/refs/heads/slsteam-moon/res/updates.yaml";
 
 	// Freshness window for the on-disk updates.yaml cache.  The safe-mode
 	// hash list changes only when Steam ships a new steamclient.so, so a
 	// day is plenty; this keeps the default user off the network on every
-	// relaunch.  Override via STEAMTOOLS_UPDATES_TTL (seconds; 0 = always
+	// relaunch.  Override via SLSSTEAM_UPDATES_TTL (seconds; 0 = always
 	// refresh).
 	long long updatesTtlSecs()
 	{
-		if (const char* ov = std::getenv("STEAMTOOLS_UPDATES_TTL"); ov && *ov)
+		if (const char* ov = std::getenv("SLSSTEAM_UPDATES_TTL"); ov && *ov)
 		{
 			try { return std::stoll(ov); } catch (...) {}
 		}

@@ -20,7 +20,7 @@
 //
 // ENABLING IT
 // -----------
-//   STEAMTOOLS_AFFTRACE=1   in the environment of the Steam process
+//   SLSSTEAM_AFFTRACE=1   in the environment of the Steam process
 //
 // Accepted true values: 1, y, yes, on, true (case-insensitive). Anything else
 // (including unset) leaves tracing off. When off, every hook-side call is a
@@ -457,7 +457,7 @@ namespace AffTrace
 		bool expected = false;
 		if (!detail::g_initDone.compare_exchange_strong(expected, true))
 			return enabled();
-		if (!optInEnabled(std::getenv("STEAMTOOLS_AFFTRACE")))
+		if (!optInEnabled(std::getenv("SLSSTEAM_AFFTRACE")))
 			return false;
 
 		const std::string path = defaultPath();

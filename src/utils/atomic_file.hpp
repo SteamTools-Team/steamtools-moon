@@ -126,7 +126,7 @@ inline bool preserveConflict(const std::string& source,
 	{
 		const auto serial = sequence.fetch_add(1, std::memory_order_relaxed);
 		const std::string conflictPath = targetBase +
-			".steamtools-conditional-conflict." +
+			".slssteam-conditional-conflict." +
 			std::to_string(static_cast<long long>(::getpid())) + "." +
 			std::to_string(serial);
 		if (renameNoReplace(source, conflictPath))

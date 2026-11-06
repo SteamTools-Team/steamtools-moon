@@ -66,7 +66,7 @@ int main()
 		"\"executable\":true}"
 	);
 
-	const std::string path = "/tmp/steamtools-attestation-test-"
+	const std::string path = "/tmp/slssteam-attestation-test-"
 	                       + std::to_string(getpid()) + ".jsonl";
 	unlink(path.c_str());
 	{
@@ -94,11 +94,11 @@ int main()
 	           "event file permissions are not restricted to 0600");
 	unlink(path.c_str());
 
-	const std::string sessionPath = "/tmp/steamtools-attestation-session-test-"
+	const std::string sessionPath = "/tmp/slssteam-attestation-session-test-"
 	                              + std::to_string(getpid()) + ".jsonl";
 	unlink(sessionPath.c_str());
-	setenv("STEAMTOOLS_ATTESTATION_FILE", sessionPath.c_str(), 1);
-	setenv("STEAMTOOLS_ATTESTATION_SESSION", "ci-session", 1);
+	setenv("SLSSTEAM_ATTESTATION_FILE", sessionPath.c_str(), 1);
+	setenv("SLSSTEAM_ATTESTATION_SESSION", "ci-session", 1);
 	expectTrue(RuntimeAttestation::initialize("global-build"),
 	           "environment-backed attestation did not initialize");
 	expectTrue

@@ -17,7 +17,7 @@ steamtools-moon is a 32-bit shared library that hooks into Steam through
 | Produce the release zip               | `scripts/release.sh`             |
 | Install onto your own Steam           | `make install`                   |
 
-[rel]: https://github.com/AceSLS/SLSsteam-Team/steamtools-moon/releases/latest
+[rel]: https://github.com/SteamTools-Team/steamtools-moon/releases/latest
 
 `make` on its own is equivalent to `scripts/build.sh --host`.
 
@@ -77,7 +77,7 @@ scripts/release.sh --version 2.1      # explicit version
 
 Equivalent to `scripts/build.sh --portable` followed by
 `scripts/package.sh`. The output is `dist/steamtools-moon-linux-<ver>.zip`,
-matching the layout consumers (and `steamtools-moon/install.sh`)
+matching the layout consumers (and `luatools-moon/install.sh`)
 expect:
 
 ```

@@ -2,7 +2,7 @@
 //
 // The API command file lived at /tmp/SteamTools.API — a fixed name in a
 // world-writable directory, with no access control, driving app installs. The
-// per-process load lock lived at /tmp/.steamtools.load.<pid>, opened without
+// per-process load lock lived at /tmp/.slssteam.load.<pid>, opened without
 // O_EXCL or O_NOFOLLOW; a local process that pre-created it and held an flock
 // made our own lock attempt fail, and the hooking pass was then skipped, which
 // turned a lock file into an injection kill switch.
@@ -84,7 +84,7 @@ int main()
 	      "a fifo is not a private file");
 
 	// ── ensureDir against a real filesystem ─────────────────────────────────
-	char tmpl[] = "/tmp/steamtools-rtd-XXXXXX";
+	char tmpl[] = "/tmp/slssteam-rtd-XXXXXX";
 	const char* sandbox = mkdtemp(tmpl);
 	if (sandbox == nullptr)
 	{

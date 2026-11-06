@@ -4,11 +4,13 @@
 
 #include "steamstub.hpp"
 
+#include "../ascii.hpp"
 #include "../config.hpp"
 #include "../globals.hpp"
 #include "../log.hpp"
 #include "../thread_start.hpp"
 #include "steamstub_warmup.hpp"
+#include "steamstub_launchopt.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -21,6 +23,7 @@
 #include <filesystem>
 #include <fstream>
 #include <mutex>
+#include <sstream>
 #include <string>
 #include <sys/wait.h>
 #include <signal.h>
@@ -210,19 +213,44 @@ namespace
 
 	constexpr auto kHelperTimeout = std::chrono::seconds(180);
 
-	bool waitForHelper(pid_t pid, int& status, const char* label)
+	// Outcome of waiting on a forked helper. `Reaped` covers the case where the
+	// Steam client keeps SIGCHLD at SIG_IGN, so the kernel auto-reaps our child
+	// and waitpid can never hand us an exit status (errno ECHILD): the child
+	// still ran to completion — we just can't read its code here, so the caller
+	// must judge success from the on-disk result.
+	enum class HelperWait { Exited, Reaped, Failed };
+
+	HelperWait waitForHelper(pid_t pid, int& status, const char* label)
 	{
 		const auto deadline = std::chrono::steady_clock::now() + kHelperTimeout;
+		bool autoReaped = false;
 		for (;;)
 		{
-			const pid_t waited = waitpid(pid, &status, WNOHANG);
-			if (waited == pid) return true;
-			if (waited < 0 && errno != EINTR)
+			if (!autoReaped)
 			{
-				g_pLog->warn("SteamStub: %s waitpid failed (errno=%d)\n",
-				             label, errno);
-				break;
+				const pid_t waited = waitpid(pid, &status, WNOHANG);
+				if (waited == pid) return HelperWait::Exited;
+				if (waited < 0 && errno == ECHILD)
+				{
+					// SIGCHLD is SIG_IGN in this process: the child is
+					// auto-reaped and its status is unrecoverable via waitpid.
+					// Switch to liveness polling so we still block until the
+					// helper actually finishes (preserving the synchronous
+					// contract) before the caller inspects the result.
+					autoReaped = true;
+				}
+				else if (waited < 0 && errno != EINTR)
+				{
+					g_pLog->warn("SteamStub: %s waitpid failed (errno=%d)\n",
+					             label, errno);
+					break;
+				}
 			}
+			else if (kill(pid, 0) != 0 && errno == ESRCH)
+			{
+				return HelperWait::Reaped;
+			}
+
 			if (std::chrono::steady_clock::now() >= deadline)
 			{
 				g_pLog->warn("SteamStub: %s timed out after %llds; terminating process group\n",
@@ -235,7 +263,7 @@ namespace
 
 		if (kill(-pid, SIGKILL) != 0) (void)kill(pid, SIGKILL);
 		while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {}
-		return false;
+		return HelperWait::Failed;
 	}
 
 	// Run `<script> <exePath>` synchronously with the STEAMLESS_HOME
@@ -268,14 +296,30 @@ namespace
 		// Parent.  Wait synchronously — we want the unpacked exe in
 		// place before LaunchApp returns and Proton starts.
 		int status = 0;
-		if (!waitForHelper(pid, status, "Steamless helper"))
-			return -1;
-		if (WIFEXITED(status))
+		switch (waitForHelper(pid, status, "Steamless helper"))
 		{
-			return WEXITSTATUS(status);
+			case HelperWait::Exited:
+				if (WIFEXITED(status)) return WEXITSTATUS(status);
+				g_pLog->warn("SteamStub: helper terminated abnormally (status=%d)\n", status);
+				return -1;
+			case HelperWait::Reaped:
+				// No exit code (auto-reaped by Steam's SIG_IGN). We only run the
+				// helper on an exe confirmed to carry the stub, so "stub now
+				// gone" is an unambiguous success; a stub still present is a
+				// real failure.
+				if (!fileHasStubMarker(exePath))
+				{
+					g_pLog->debug("SteamStub: helper auto-reaped; stub removed from %s -> success\n",
+					              exePath.c_str());
+					return 0;
+				}
+				g_pLog->warn("SteamStub: helper auto-reaped but stub remains in %s\n",
+				             exePath.c_str());
+				return -1;
+			case HelperWait::Failed:
+			default:
+				return -1;
 		}
-		g_pLog->warn("SteamStub: helper terminated abnormally (status=%d)\n", status);
-		return -1;
 	}
 
 	// Run `<script> --prewarm` synchronously (in a worker thread,
@@ -299,13 +343,136 @@ namespace
 		}
 		(void)setpgid(pid, pid);
 		int status = 0;
-		if (!waitForHelper(pid, status, "Steamless prewarm"))
-			return -1;
-		if (WIFEXITED(status))
+		switch (waitForHelper(pid, status, "Steamless prewarm"))
 		{
-			return WEXITSTATUS(status);
+			case HelperWait::Exited:
+				return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+			case HelperWait::Reaped:
+				// Prefix init is idempotent; auto-reap means it completed.
+				return 0;
+			case HelperWait::Failed:
+			default:
+				return -1;
 		}
-		return -1;
+	}
+
+	// True when the app's Steam launch options carry the `--steamless`
+	// (or `-steamless`) opt-in token. Read from every local user's
+	// localconfig.vdf. Stripping is otherwise disabled so SteamStub-verifying
+	// titles keep the pristine on-disk executable they hash at startup, and
+	// the stub itself runs under Proton once ownership is satisfied.
+	bool steamlessRequested(uint32_t appId)
+	{
+		const char* home = std::getenv("HOME");
+		if (!home) return false;
+
+		static const char* steamRoots[] = {
+			"/.steam/steam",
+			"/.steam/debian-installation",
+			"/.local/share/Steam",
+		};
+
+		for (const char* suffix : steamRoots)
+		{
+			const auto userdata = std::filesystem::path(home)
+				/ (std::string(suffix).substr(1)) / "userdata";
+			std::error_code ec;
+			if (!std::filesystem::is_directory(userdata, ec) || ec) continue;
+
+			for (std::filesystem::directory_iterator it(userdata, ec), end;
+			     it != end && !ec; it.increment(ec))
+			{
+				std::error_code fileEc;
+				if (!it->is_directory(fileEc) || fileEc) continue;
+
+				const auto vdf = it->path() / "config" / "localconfig.vdf";
+				std::error_code exEc;
+				if (!std::filesystem::exists(vdf, exEc) || exEc) continue;
+
+				std::ifstream f(vdf, std::ios::binary);
+				if (!f.is_open()) continue;
+				std::stringstream ss;
+				ss << f.rdbuf();
+
+				const std::string opts =
+					SteamlessLaunchOpt::parseAppLaunchOptions(ss.str(), appId);
+				if (SteamlessLaunchOpt::requestsSteamless(opts))
+				{
+					g_pLog->debug("SteamStub: --steamless launch option set for %u\n", appId);
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	// Default-mode counterpart to the strip loop: undo any previous Steamless
+	// run so the on-disk exe is byte-for-byte what the game shipped. Renames a
+	// `<exe>.original.exe` backup back over `<exe>` and drops the
+	// `.steamless_done` marker. Idempotent — a no-op when no backup is present.
+	void restoreOriginals(const std::string& installDir)
+	{
+		auto endsWith = [](const std::string& s, const char* suffix) {
+			const size_t n = std::strlen(suffix);
+			return s.size() >= n
+			    && std::strncmp(s.data() + s.size() - n, suffix, n) == 0;
+		};
+
+		std::error_code walkEc;
+		for (std::filesystem::recursive_directory_iterator it(installDir, walkEc), end;
+		     it != end && !walkEc;
+		     it.increment(walkEc))
+		{
+			if (it.depth() > 3)
+			{
+				it.disable_recursion_pending();
+				continue;
+			}
+			std::error_code fileEc;
+			if (!it->is_regular_file(fileEc) || fileEc) continue;
+
+			const auto& backup = it->path();
+			if (!endsWith(backup.filename().string(), ".original.exe")) continue;
+
+			// Live path = backup path minus the ".original.exe" suffix.
+			const std::string backupStr = backup.string();
+			const std::string liveStr =
+				backupStr.substr(0, backupStr.size() - std::strlen(".original.exe"));
+
+			// Refuse to clobber the live exe with a truncated or non-PE backup:
+			// a bad restore would brick the game.
+			{
+				std::ifstream bf(backupStr, std::ios::binary);
+				char mz[2] = {};
+				if (!bf.is_open() || !bf.read(mz, sizeof(mz))
+				    || mz[0] != 'M' || mz[1] != 'Z')
+				{
+					g_pLog->warn("SteamStub: skipping restore, backup not a valid PE: %s\n",
+					             backupStr.c_str());
+					continue;
+				}
+			}
+
+			std::error_code renEc;
+			std::filesystem::rename(backup, liveStr, renEc);
+			if (renEc)
+			{
+				g_pLog->warn("SteamStub: failed to restore %s (%s)\n",
+				             liveStr.c_str(), renEc.message().c_str());
+				continue;
+			}
+
+			std::error_code rmEc;
+			std::filesystem::remove(liveStr + ".steamless_done", rmEc);
+
+			{
+				std::lock_guard<std::mutex> lk(g_processedMu);
+				g_processedExes.erase(liveStr);
+			}
+
+			g_pLog->info("SteamStub: restored original executable (--steamless not set): %s\n",
+			             liveStr.c_str());
+		}
 	}
 }
 
@@ -453,7 +620,6 @@ void warmupAsync()
 
 void onLaunchApp(uint32_t appId)
 {
-	if (!g_enabled.load(std::memory_order_acquire)) return;
 	if (!appId) return;
 	if (!g_config.isAddedAppId(appId)) return;
 
@@ -463,6 +629,27 @@ void onLaunchApp(uint32_t appId)
 		g_pLog->debug("SteamStub: no install dir resolved for %u; skip\n", appId);
 		return;
 	}
+
+	// Default: never modify the game executable. An unmodified on-disk exe is
+	// what SteamStub-verifying titles hash, and the stub itself runs under
+	// Proton once ownership is satisfied. Steamless is opt-in per app via a
+	// `--steamless` token in the app's Steam launch options. In default mode
+	// undo any earlier strip so a previously-processed game reverts to its
+	// pristine executable.
+	if (!steamlessRequested(appId))
+	{
+		restoreOriginals(installDir);
+		return;
+	}
+
+	if (!g_enabled.load(std::memory_order_acquire))
+	{
+		g_pLog->warn("SteamStub: --steamless set for %u but the Steamless kit is "
+		             "unavailable; leaving the executable untouched\n", appId);
+		return;
+	}
+
+	g_pLog->infoOnce("SteamStub: --steamless opt-in active for %u\n", appId);
 
 	g_pLog->debug("SteamStub: scanning %s for %u\n", installDir.c_str(), appId);
 
@@ -484,7 +671,7 @@ void onLaunchApp(uint32_t appId)
 		// Cheap extension filter before opening the file.
 		auto ext = p.extension().string();
 		std::transform(ext.begin(), ext.end(), ext.begin(),
-			[](unsigned char c){ return std::tolower(c); });
+			[](unsigned char c){ return Ascii::toLower(c); });
 		if (ext != ".exe") continue;
 
 		const auto pathStr = p.string();

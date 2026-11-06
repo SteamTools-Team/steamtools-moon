@@ -75,6 +75,9 @@ CacheProbe probeCache(std::uint32_t appId, CacheProbeMode mode);
 // Observation-only recency used outside Steam callbacks to prioritize bounded
 // metadata migration. Zero means the pair changed or could not be observed.
 std::int64_t cachePairMtimeSecs(std::uint32_t appId) noexcept;
+// Mtime (secs) of the DLC-metadata sidecar (dlcmetadata_<id>.yaml), or 0 when
+// absent. Cheap stat used to key the hot-reload per-app input memo.
+std::int64_t dlcMetadataCacheMtimeSecs(std::uint32_t appId) noexcept;
 std::string localContentFingerprint(std::uint32_t appId);
 std::string localContentFingerprint(
 	std::uint32_t appId,
@@ -342,6 +345,15 @@ bool memoizePublishedCachePairLocked(uint32_t appId);
 // usable depot content. The helper acquires the cross-process cache lock and
 // is the single safe entry point for direct buffer consumers.
 bool readValidatedCacheBuffer(uint32_t appId, std::string& buffer);
+
+// Return active appinfo that must remain authoritative over Steam's token-
+// gated refresh. Synthetic marker-only compatibility state is retained even
+// outside the managed provider scope; normal pairs must be managed, pass full
+// cache validation and carry provider-normalized (or legacy ambiguous)
+// provenance. Explicit raw-PICS pairs remain refreshable.
+std::unordered_set<std::uint32_t> locallyAuthoritativeApps(
+	const std::unordered_set<std::uint32_t>& managedCandidates,
+	const std::unordered_set<std::uint32_t>& activeCandidates);
 
 // Allow a newly published pair to become readable after a prior managed-app
 // removal invalidated the old cache in this process.

@@ -16,7 +16,7 @@ USER_AUTOSTART="${XDG_CONFIG_HOME:-$HOME/.config}/autostart/steam.desktop"
 SYS_AUTOSTART="/etc/xdg/autostart/steam.desktop"
 
 # Tag we drop into patched .desktop files so we can detect/undo them later.
-SLSM_TAG="X-SteamToolsMoon-Patched=true"
+SLSM_TAG="X-SLSteamMoon-Patched=true"
 
 # Desktop-coverage logic (scan + patch every *steam*.desktop, blindagens,
 # restore) lives in one sourceable lib shared with the wrapper and Lumen. Source
@@ -850,7 +850,7 @@ if [ -x "$LUMEN_DIR/lumen" ] && ! pgrep -f "$LUMEN_DIR/lumen" >/dev/null 2>&1; t
 	touch "$HOME/.steam/steam/.cef-enable-remote-debugging" 2>/dev/null || true
 	touch "$HOME/.steam/debian-installation/.cef-enable-remote-debugging" 2>/dev/null || true
 	env -u LD_AUDIT -u LD_PRELOAD -u LD_LIBRARY_PATH \
-	    LUMEN_BACKEND_DIR="$LUMEN_DIR/steamtools/backend" \
+	    LUMEN_BACKEND_DIR="$LUMEN_DIR/luatools/backend" \
 	    LUMEN_LUA_DIR="$LUMEN_DIR/lua" \
 	    setsid "$LUMEN_DIR/lumen" >/dev/null 2>&1 < /dev/null &
 fi
@@ -881,7 +881,9 @@ fi
 exec "$STEAM_BIN" "$@"
 EOF
 
-	chmod +x "$SLSDIR/path/steam"
+	# The root-owned launcher shim refuses group/other-writable wrappers. Set the
+	# complete mode explicitly so a user umask such as 0002 cannot produce 0775.
+	chmod 0755 "$SLSDIR/path/steam"
 
 	log_success "Steam wrapper created at $SLSDIR/path/steam"
 	echo ""
@@ -1263,7 +1265,7 @@ restore_or_remove_desktop() {
 
 	[ -f "$f" ] || return 0
 	if [ ! -f "$backup" ]; then
-		for legacy in "$f.steamtools-backup" "$f.steamtools-bak"; do
+		for legacy in "$f.slssteam-backup" "$f.steamtools-bak"; do
 			[ -f "$legacy" ] || continue
 			mkdir -p "$(dirname "$backup")" 2>/dev/null || break
 			if [ -n "$sudo_cmd" ]; then

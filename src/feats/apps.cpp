@@ -1,6 +1,10 @@
 #include "apps.hpp"
+#include "stats_policy.hpp"
+
+#include "stats_policy.hpp"
 
 #include "../sdk/CAppOwnershipInfo.hpp"
+#include "../sdk/CNetPacket.hpp"
 #include "../sdk/CProtoBufMsgBase.hpp"
 #include "../sdk/CSteamEngine.hpp"
 #include "../sdk/CUser.hpp"
@@ -12,6 +16,7 @@
 #include "../globals.hpp"
 
 #include "appinfo_provision.hpp"
+#include "appinfostate.hpp"
 #include "clouddecision.hpp"
 #include "fakeappid.hpp"
 #include "synthmark.hpp"
@@ -191,8 +196,14 @@ namespace
 			fullyInstalled = (g_pClientAppManager->getAppInstallState(appId) &
 			                  APPSTATE_FULLY_INSTALLED) != 0;
 		}
+		// cachePairMtimeSecs() is a two-stat probe of the on-disk pair; it takes
+		// no lock and cannot be withdrawn by a validation miss, so it keeps the
+		// filter armed when the published set is incomplete.
+		const bool locallyAuthoritative = SynthMark::localAppInfoAuthority(
+		    AppInfoState::isAuthoritative(appId),
+		    AppInfoProvision::cachePairMtimeSecs(appId) > 0);
 		return SynthMark::installStateAllowsStrip(
-		    AppInfoProvision::isSynthesizedApp(appId),
+		    locallyAuthoritative,
 		    g_config.isAddedAppId(appId), appManagerResolved, fullyInstalled);
 	}
 
@@ -205,11 +216,12 @@ namespace
 bool Apps::applistRequested;
 std::map<uint32_t, int> Apps::appIdOwnerOverride;
 
-bool Apps::unlockApp(uint32_t appId, CAppOwnershipInfo* info, uint32_t ownerId)
+bool Apps::unlockApp(uint32_t appId, CAppOwnershipInfo* info, const CSteamId& ownerId)
 {
-	info->owner = ownerId;
+	//Changing the purchased field is enough, but just for nicety in the Steamclient UI we change the owner too
+	info->owner = ownerId.accountId();
 	info->realOwner = 0;
-	info->familyShared = ownerId != g_currentSteamId;
+	info->familyShared = info->owner != g_currentSteamId.accountId();
 
 	info->licensePermanent = !info->familyShared;
 	info->retailLicense = false;
@@ -240,20 +252,25 @@ bool Apps::unlockApp(uint32_t appId, CAppOwnershipInfo* info)
 
 bool Apps::checkAppOwnership(uint32_t appId, CAppOwnershipInfo* pInfo)
 {
-	if (!applistRequested || !pInfo || !g_currentSteamId)
+	if (!applistRequested || !pInfo || !g_currentSteamId.isSet())
 	{
 		return false;
 	}
 
 	const uint32_t denuvoOwner = g_config.getDenuvoGameOwner(appId);
 
-	if (denuvoOwner && denuvoOwner != g_currentSteamId)
+	// Moon keeps DenuvoGames keyed by the 32-bit account id.
+	if (denuvoOwner && denuvoOwner != g_currentSteamId.accountId())
 	{
 		g_pLog->infoOnce("Skipping %u because it's a Denuvo game from someone else\n", appId);
 		return false;
 	}
 
 	if (g_config.shouldExcludeAppId(appId))
+	{
+		return false;
+	}
+	if (StatsPolicy::hasNativeLicense(appId))
 	{
 		return false;
 	}
@@ -305,15 +322,26 @@ bool Apps::checkAppOwnership(uint32_t appId, CAppOwnershipInfo* pInfo)
 
 void Apps::getSubscribedApps(uint32_t* appList, size_t size, uint32_t& count)
 {
+	const auto& added = g_config.addedAppIds.get();
 	if (!size || !appList)
 	{
-		count = count + g_config.addedAppIds.get().size();
+		// Probe call: report how many extra ids we would append so Steam sizes
+		// the real buffer to fit them.
+		count = count + added.size();
 		return;
 	}
 
-	for(auto& appId : g_config.addedAppIds.get())
+	// Append our ids, but never write past the caller's buffer.  `count` still
+	// advances to the true total so Steam re-queries with a larger buffer when
+	// truncated, matching Steam's own GetSubscribedApps contract.  Writing
+	// unconditionally overflowed the buffer whenever the real subscribed set
+	// plus our ids exceeded `size` — e.g. a game added (hot-reload) between the
+	// size probe and this fill — corrupting adjacent client heap.
+	for (const auto& appId : added)
 	{
-		appList[count++] = appId;
+		if (count < size)
+			appList[count] = appId;
+		++count;
 	}
 
 	applistRequested = true;
@@ -435,6 +463,16 @@ bool Apps::shouldDisableUpdates(uint32_t appId)
 		{
 			return true;  // providers offline: suppress updates
 		}
+		if (!g_config.autoUpdateApps.get())
+		{
+			// Global "auto-update apps" is off: freeze this unpinned app on
+			// whatever build is installed (mirrors LuaTools' toggle).  Safe:
+			// we are past the FULLY_INSTALLED gate so the initial install
+			// already ran, and with no pin there is no gid rewrite -> no
+			// reconcile loop.  A per-app pin takes the locked branch below
+			// and is unaffected by this switch.
+			return true;
+		}
 		return false;  // unlocked AddedApp: updates enabled (grab latest)
 	}
 
@@ -445,25 +483,26 @@ bool Apps::shouldDisableUpdates(uint32_t appId)
 	return atPinned;
 }
 
-void Apps::sendGamesPlayed(CMsgClientGamesPlayed* msg)
+void Apps::sendGamesPlayed(CNetPacket* pkt)
 {
+	auto msg = pkt->deserializeBody<CMsgClientGamesPlayed>();
+
 	auto titles = g_config.gameTitles.get();
 	bool owned = false;
 
-	for(int i = 0; i < msg->games_played_size(); i++)
+	for (int i = 0; i < msg.games_played_size(); i++)
 	{
-		auto game = CMsgClientGamesPlayed_GamePlayed(msg->games_played(i));
-
-		if (!game.game_id())
+		auto game = msg.mutable_games_played(i);
+		if (!game->game_id())
 		{
 			continue;
 		}
 
-		const uint64_t gameId = game.game_id();
+		const uint64_t gameId = game->game_id();
 
-		// Native non-Steam shortcut IDs use 0x02000000 in their low 32 bits.
-		// Keep Steam's shortcut title and full 64-bit ID untouched.
-		if ((gameId & 0xffffffffULL) == 0x02000000ULL)
+		// Native non-Steam shortcut IDs use 0x2000000 in their low 32 bits.
+		// Leave the original shortcut title and 64-bit ID untouched.
+		if (gameId & 0x2000000ULL)
 		{
 			g_pLog->debug("Preserving non-Steam shortcut %llu\n", gameId);
 			continue;
@@ -480,76 +519,78 @@ void Apps::sendGamesPlayed(CMsgClientGamesPlayed* msg)
 
 		if (g_config.disableFamilyLock.get())
 		{
-			game.set_owner_id(1);
+			game->set_owner_id(1);
 		}
 
 		if (titles.contains(gameId))
 		{
-			game.set_game_extra_info(titles[gameId]);
+			game->set_game_extra_info(titles[gameId]);
 		}
 		else if (!owned || FakeAppIds::getFakeAppId(gameId))
 		{
 			char name[256] {}; //No clue how long titles can get
 			if (g_pClientApps)
 			{
-				g_pClientApps->getAppData(gameId, "common/name", name, sizeof(name));
-				g_pLog->debug("AppName %s\n", name);
-				game.set_game_extra_info(name);
+				const int len = g_pClientApps->getAppData(
+					gameId, "common/name", name, sizeof(name));
+				if (len > 0)
+				{
+					g_pLog->debug("AppName %s (%i)\n", name, len);
+					game->set_game_extra_info(name);
+				}
 			}
 		}
 
-		msg->mutable_games_played(i)->ParseFromString(game.SerializeAsString());
+		//msg->mutable_games_played(i)->ParseFromString(game.SerializeAsString());
 
-		g_pLog->debug("Playing game %llu with flags %u & pid %u\n", gameId, game.game_flags(), game.process_id());
+		g_pLog->debug("Playing game %llu with flags %u & pid %u\n", gameId, game->game_flags(), game->process_id());
 	}
 
-	if (owned || msg->games_played_size() > 0)
+	if (msg.games_played_size() < 1)
 	{
-		return;
-	}
-
-	const auto statusApp = g_config.idleStatus.get();
-	if (statusApp.appId)
-	{
-		auto game = msg->add_games_played();
-		game->set_game_id(statusApp.appId);
-		game->set_game_extra_info(statusApp.title);
-		game->set_game_flags(0);
-
-		if (g_config.disableFamilyLock.get())
+		const auto statusApp = g_config.idleStatus.get();
+		if (statusApp.appId)
 		{
-			game->set_owner_id(1);
+			auto game = msg.add_games_played();
+			game->set_game_id(statusApp.appId);
+			game->set_game_extra_info(statusApp.title);
+			game->set_game_flags(0);
+
+			if (g_config.disableFamilyLock.get())
+			{
+				game->set_owner_id(1);
+			}
+			//game->set_game_flags(EGAMEFLAG_MULTIPLAYER);
 		}
 	}
+
+	pkt->serialize(msg);
 }
 
-void Apps::sendPICSInfoRequest(CMsgClientPICSProductInfoRequest* msg)
+void Apps::sendPICSInfoRequest(CNetPacket* pkt)
 {
 	const auto tokens = g_config.appTokens.get();
+	auto msg = pkt->deserializeBody<CMsgClientPICSProductInfoRequest>();
 
-	// Strip token-locked synthetic AddedApps from Steam's outgoing
-	// product-info request.  These apps' access token is DENIED, so Steam's
-	// refresh response is an EMPTY buffer; letting it through clobbers the
-	// depots + installdir we synthesized into appinfo at startup, dropping
-	// the install dialog to 0 B with "Invalid install path".  By removing
-	// them from the request, Steam never re-fetches them and keeps the
-	// startup splice. Protection is gated off after full installation. It is
-	// deliberately not time/count bounded: the AppInfoState skip flag completes
-	// Steam's updater state, so falling through later only permits clobbering.
+	// Strip locally authoritative AddedApps from Steam's outgoing product-info
+	// request. Their account access token may be denied even when our anonymous
+	// CM fetch returned complete metadata; the resulting empty refresh clobbers
+	// the startup splice. Protection is gated off after full installation and
+	// deliberately has no time/count limit.
 	{
 		std::vector<uint32_t> requested;
-		requested.reserve(static_cast<size_t>(msg->apps_size()));
-		for (int i = 0; i < msg->apps_size(); ++i)
-			requested.push_back(msg->apps(i).appid());
+		requested.reserve(static_cast<size_t>(msg.apps_size()));
+		for (int i = 0; i < msg.apps_size(); ++i)
+			requested.push_back(msg.apps(i).appid());
 
 		const auto strip = SynthMark::stripIndices(
 		    requested, [](uint32_t appId) { return permitSynthStrip(appId); });
 
 		for (int idx : strip) // descending, safe for in-place delete
 		{
-			g_pLog->debug("PICS-request: stripping token-locked synthetic app %u\n",
-			              msg->apps(idx).appid());
-			msg->mutable_apps()->DeleteSubrange(idx, 1);
+			g_pLog->debug("PICS-request: stripping locally authoritative app %u\n",
+			              msg.apps(idx).appid());
+			msg.mutable_apps()->DeleteSubrange(idx, 1);
 		}
 	}
 
@@ -563,9 +604,9 @@ void Apps::sendPICSInfoRequest(CMsgClientPICSProductInfoRequest* msg)
 	// hangs the client at "Loading user data".  We only attach an access
 	// token to apps Steam is ALREADY asking about, so the CM returns a real
 	// product-info buffer for them.
-	for (int i = 0; i < msg->apps_size(); i++)
+	for (int i = 0; i < msg.apps_size(); i++)
 	{
-		auto app = msg->mutable_apps(i);
+		auto app = msg.mutable_apps(i);
 		if (tokens.contains(app->appid()))
 		{
 			app->set_access_token(tokens.at(app->appid()));
@@ -574,27 +615,28 @@ void Apps::sendPICSInfoRequest(CMsgClientPICSProductInfoRequest* msg)
 	}
 
 	std::stringstream sentIds;
-	for (int i = 0; i < msg->apps_size(); ++i)
+	for (int i = 0; i < msg.apps_size(); ++i)
 	{
 		if (i) sentIds << ',';
-		sentIds << msg->apps(i).appid();
+		sentIds << msg.apps(i).appid();
 	}
 	g_pLog->debug("PICS-request: apps=%d packages=%d ids=[%s]\n",
-	              msg->apps_size(), msg->packages_size(), sentIds.str().c_str());
+	              msg.apps_size(), msg.packages_size(), sentIds.str().c_str());
+	pkt->serialize(msg);
 }
 
-void Apps::sendMsg(CProtoBufMsgBase *msg)
+void Apps::sendMsg(CNetPacket *pkt)
 {
-	switch(msg->type)
+	switch(pkt->getProtoBufType())
 	{
 		case EMSG_PICS_PRODUCTINFO_REQUEST:
-			sendPICSInfoRequest(msg->getBody<CMsgClientPICSProductInfoRequest>());
+			sendPICSInfoRequest(pkt);
 			break;
 
 		case EMSG_GAMESPLAYED:
 		case EMSG_GAMESPLAYED_NO_DATABLOB:
 		case EMSG_GAMESPLAYED_WITH_DATABLOB:
-			sendGamesPlayed(msg->getBody<CMsgClientGamesPlayed>());
+			sendGamesPlayed(pkt);
 			break;
 	}
 }

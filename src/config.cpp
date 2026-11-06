@@ -13,6 +13,7 @@
 #include "feats/depotkey.hpp"
 #include "config_discovery.hpp"
 #include "feats/hotreload.hpp"
+#include "feats/manifestdonor_policy.hpp"
 #include "feats/manifestid.hpp"
 #include "feats/ticket.hpp"
 
@@ -155,6 +156,25 @@ std::unordered_set<uint32_t> CConfig::discoverStPluginAppIds()
 		{
 			result.insert(appIdStem);
 		}
+	}
+
+	// The plugin adds a game by writing <id>.lua into this directory while
+	// Steam runs, so the scan above races live writes/renames: a single
+	// directory_iterator pass (or a failed `ec` walk) can drop a still-present
+	// entry. Taken at face value that reads as a removal, and the watcher then
+	// quarantines the app's cache + re-provisions it on the next scan — the
+	// remove/re-add flap. Confirm each apparent drop against its actual file so
+	// a transient short scan cannot be misread as a removal; a genuinely
+	// deleted <id>.lua is still absent here and is correctly not recovered.
+	for (const uint32_t appId : ConfigDiscovery::recoverRacyScanDrops(
+	         result, managedAppIds.get(),
+	         [&](uint32_t id) {
+		         std::error_code fex;
+		         return std::filesystem::exists(
+		             stplug + "/" + std::to_string(id) + ".lua", fex);
+	         }))
+	{
+		result.insert(appId);
 	}
 	return result;
 }
@@ -323,14 +343,39 @@ bool CConfig::init()
 		const auto steamRoot = findSteamRootForConfig();
 		if (!steamRoot.empty())
 		{
+			// Create the directory when it is missing instead of skipping the
+			// watch. inotify cannot watch a path that does not exist yet and
+			// nothing re-adds it later, so on an install where no game has been
+			// added yet the FIRST add produced no event at all and needed a Steam
+			// restart. The plugin writes its scripts here regardless, so creating
+			// it is the same state a first add would have produced.
 			const auto stplug = steamRoot + "/config/stplug-in";
-			if (std::filesystem::exists(stplug))
+			std::error_code stplugError;
+			std::filesystem::create_directories(stplug, stplugError);
+			if (!watcher->addFile(stplug.c_str()))
 			{
-				watcher->addFile(stplug.c_str());
+				// Losing THIS watch is losing hot reload for adding games. The
+				// common cause is the per-user inotify watch limit, which is a
+				// host setting the user can raise, so it must not be silent.
+				g_pLog->warn(
+				    "Config watcher: cannot watch %s (%s); adding a game will "
+				    "need a Steam restart\n",
+				    stplug.c_str(),
+				    stplugError ? stplugError.message().c_str()
+				                : "inotify_add_watch failed");
 			}
 		}
+		else
+		{
+			g_pLog->warn("Config watcher: no Steam root; adding a game will need "
+			             "a Steam restart\n");
+		}
 
-		watcher->start();
+		if (!watcher->start())
+		{
+			g_pLog->warn("Config watcher: watcher thread did not start; every "
+			             "change will need a Steam restart\n");
+		}
 	}
 
 	return true;
@@ -414,6 +459,7 @@ bool CConfig::loadSettings()
 	useWhiteList = getSetting<bool>(node, "UseWhitelist", false);
 	automaticFilter = getSetting<bool>(node, "AutoFilterList", true);
 	playNotOwnedGames = getSetting<bool>(node, "PlayNotOwnedGames", false);
+	smartTickets = getSetting<SmartTicketsFlags>(node, "SmartTickets", 1);
 	// SafeMode (abort the load on an unknown steamclient.so hash) is force-
 	// disabled. Its hash whitelist cannot be kept current: it goes stale on
 	// every Steam client update and would disable an otherwise-working client,
@@ -431,6 +477,31 @@ bool CConfig::loadSettings()
 	fakeEmail = getSetting<std::string>(node, "FakeEmail", "");
 	fakeWalletBalance = getSetting<int32_t>(node, "FakeWalletBalance", 0);
 	disableCloud = getSetting<bool>(node, "DisableCloud", true);
+	autoUpdateApps = getSetting<bool>(node, "AutoUpdateApps", true);
+	DonateSettings donateSettings;
+	const YAML::Node donateNode = node["Donate"];
+	if (donateNode && donateNode.IsMap())
+	{
+		donateSettings.enabled = donateNode["Enabled"].as<bool>(donateSettings.enabled);
+		const std::string url = donateNode["Url"].as<std::string>(donateSettings.url);
+		if (ManifestDonor::isBaseUrlAllowed(url) && url.size() <= 2048)
+		{
+			donateSettings.url = url;
+			while (donateSettings.url.size() > 8 && donateSettings.url.back() == '/')
+				donateSettings.url.pop_back();
+		}
+		auto bounded = [&](const char* key, uint32_t low, uint32_t high, uint32_t& field)
+		{
+			const uint64_t value = donateNode[key].as<uint64_t>(field);
+			if (value >= low && value <= high) field = static_cast<uint32_t>(value);
+		};
+		bounded("IntervalSecs", 30, 86400, donateSettings.intervalSecs);
+		bounded("WantedRefreshSecs", 30, 86400, donateSettings.wantedRefreshSecs);
+		bounded("MaxMintsPerCycle", 1, 500, donateSettings.maxMintsPerCycle);
+		bounded("MinMintIntervalMs", 0, 60000, donateSettings.minMintIntervalMs);
+		bounded("MaxMintsPerSession", 0, 100000, donateSettings.maxMintsPerSession);
+	}
+	donate.set(donateSettings);
 	injectAllAdvertisedDlc = getSetting<bool>(node, "InjectAllAdvertisedDlc", false);
 	achievements = getSetting<bool>(node, "Achievements", true);
 	achievementOwnerId = getSetting<uint64_t>(node, "AchievementOwnerId", 76561198028121353ULL);
@@ -449,16 +520,17 @@ bool CConfig::loadSettings()
 		"Config: DisableFamilyShareLock=%i DisableParentalRestrictions=%i "
 		"UseWhitelist=%i AutoFilterList=%i PlayNotOwnedGames=%i SafeMode=%i "
 		"Notifications=%i WarnHashMissmatch=%i NotifyInit=%i API=%i "
-		"FakeEmail=%s FakeWalletBalance=%i DisableCloud=%i "
+		"FakeEmail=%s FakeWalletBalance=%i DisableCloud=%i Donate=%i "
 		"InjectAllAdvertisedDlc=%i Achievements=%i PatternCache=%i "
-		"AsyncProvision=%i ExtendedLogging=%i LogLevel=%u\n",
+		"AsyncProvision=%i ExtendedLogging=%i AutoUpdateApps=%i LogLevel=%u\n",
 		disableFamilyLock.get(), disableParentalRestrictions.get(),
 		useWhiteList.get(), automaticFilter.get(), playNotOwnedGames.get(),
 		safeMode.get(), notifications.get(), warnHashMissmatch.get(),
 		notifyInit.get(), api.get(), fakeEmail.get().c_str(),
-		fakeWalletBalance.get(), disableCloud.get(), injectAllAdvertisedDlc.get(),
+		fakeWalletBalance.get(), disableCloud.get(), donate.get().enabled,
+		injectAllAdvertisedDlc.get(),
 		achievements.get(), patternCache.get(), asyncProvision.get(),
-		extendedLogging.get(), logLevel.get());
+		extendedLogging.get(), autoUpdateApps.get(), logLevel.get());
 
 	appIds = getList<uint32_t>(node, "AppIds");
 
@@ -475,8 +547,35 @@ bool CConfig::loadSettings()
 		const auto steamRoot = findSteamRootForConfig();
 		if (!steamRoot.empty())
 		{
-			installed = ConfigDiscovery::scanInstalledApps(
-			    ConfigDiscovery::steamAppsRootsFor(steamRoot));
+			const auto steamAppsRoots =
+			    ConfigDiscovery::steamAppsRootsFor(steamRoot);
+			installed = ConfigDiscovery::scanInstalledApps(steamAppsRoots);
+
+			// Steam rewrites appmanifests during boot/update, so the whole-
+			// directory walk above can transiently skip a still-installed app.
+			// Confirm each apparent disappearance against its specific manifest:
+			// a scan artifact (manifest still present) is recovered so it is not
+			// mistaken for an uninstall — which would drop the app from the
+			// active set and revoke its ownership/tickets + quarantine its
+			// cache. A genuinely removed manifest is still absent here and is
+			// correctly not recovered.
+			for (const uint32_t appId : ConfigDiscovery::recoverRacyScanDrops(
+			         installed.all, installedAppIds.get(),
+			         [&](uint32_t id) {
+				         bool acc = false;
+				         return ConfigDiscovery::confirmInstalledApp(
+				             steamAppsRoots, id, acc);
+			         }))
+			{
+				bool isAccela = false;
+				if (ConfigDiscovery::confirmInstalledApp(
+				        steamAppsRoots, appId, isAccela))
+				{
+					installed.all.insert(appId);
+					if (isAccela) installed.accela.insert(appId);
+				}
+			}
+			installedAppIds = installed.all;
 		}
 		// A cap of 0 means "no safety valve": pass the full discovered size so
 		// nothing is deferred. Installed apps are handed in so titles with
@@ -533,6 +632,7 @@ bool CConfig::loadSettings()
 	achievementOwners = getMap<uint32_t, uint64_t>(node, "AchievementOwners");
 	gameTitles = getMap<uint32_t, std::string>(node, "GameTitles");
 	subscriptionTimestamps = getMap<uint32_t, uint32_t>(node, "SubscriptionTimestamps");
+	steamIdOverride = getMap<AppId_t, uint64_t>(node, "SteamIdOverride");
 
 	//Do not warn for these (yet?)
 	const auto idleStatusNode = node["IdleStatus"];

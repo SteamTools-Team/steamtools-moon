@@ -33,8 +33,8 @@ void writeFixture(const std::string& path, const std::string& contents)
 bool backupsPresent(const std::string& bufferPath, const std::string& metaPath)
 {
 	std::error_code ec;
-	return std::filesystem::exists(bufferPath + ".steamtools-pair-backup", ec) ||
-	       std::filesystem::exists(metaPath + ".steamtools-pair-backup", ec);
+	return std::filesystem::exists(bufferPath + ".slssteam-pair-backup", ec) ||
+	       std::filesystem::exists(metaPath + ".slssteam-pair-backup", ec);
 }
 
 } // namespace
@@ -42,7 +42,7 @@ bool backupsPresent(const std::string& bufferPath, const std::string& metaPath)
 int main()
 {
 	const std::string root =
-		"/tmp/steamtools-cache-pair." + std::to_string(getpid());
+		"/tmp/slssteam-cache-pair." + std::to_string(getpid());
 	std::error_code ec;
 	std::filesystem::remove_all(root, ec);
 	std::filesystem::create_directories(root, ec);

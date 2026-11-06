@@ -235,10 +235,10 @@ std::string cmListCachePath()
 // Freshness window for the CM-list cache (seconds).  The list is stable
 // bootstrap infra, so a long TTL is safe; a stale entry self-heals
 // because CmClient re-fetches when every cached endpoint fails to
-// connect.  Override via STEAMTOOLS_CMLIST_TTL (0 disables).
+// connect.  Override via SLSSTEAM_CMLIST_TTL (0 disables).
 long long cmListTtlSecs()
 {
-	if (const char* ov = std::getenv("STEAMTOOLS_CMLIST_TTL"); ov && *ov)
+	if (const char* ov = std::getenv("SLSSTEAM_CMLIST_TTL"); ov && *ov)
 	{
 		try { return std::stoll(ov); } catch (...) {}
 	}

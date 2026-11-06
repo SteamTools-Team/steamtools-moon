@@ -29,11 +29,15 @@ struct StepResult
 	StepStatus status = StepStatus::Unavailable;
 };
 
+// Decodes the `lea ecx,[esi+disp32]` (8D 8E) that the CUser constructor uses
+// to pass its embedded CCompatManager.  Only this form is accepted: the older
+// `lea ebx` (8D 9E) site belongs to clients whose IClientCompat vtable had
+// three more methods, so the current VFTIndexes must never reach that layout.
 inline std::optional<std::size_t> decodeManagerOffset(
 	std::span<const std::uint8_t> instruction) noexcept
 {
 	if (instruction.size() < 6 || instruction[0] != 0x8d ||
-		instruction[1] != 0x9e)
+		instruction[1] != 0x8e)
 	{
 		return std::nullopt;
 	}

@@ -30,6 +30,7 @@
 #include "usabledepot.hpp"
 
 #include "../config.hpp"
+#include "../ascii.hpp"
 #include "../globals.hpp"
 #include "../log.hpp"
 #include "../ownerwork.hpp"
@@ -53,7 +54,6 @@
 #include <algorithm>
 #include <chrono>
 #include <atomic>
-#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
@@ -282,18 +282,18 @@ NetworkFailure httpGetJson(const std::string& url, std::string& body,
 
 // ---------------------------------------------------------------------------
 // Provider list.  Each entry is a URL template with `{appid}`.
-// First success wins.  Override via env STEAMTOOLS_APPINFO_PROVIDER.
+// First success wins.  Override via env SLSSTEAM_APPINFO_PROVIDER.
 // ---------------------------------------------------------------------------
 
 const std::vector<std::string>& providerChain()
 {
 	// Built once.  The first entry can be overridden via the env var
-	// STEAMTOOLS_APPINFO_PROVIDER (a URL template containing `{appid}`),
+	// SLSSTEAM_APPINFO_PROVIDER (a URL template containing `{appid}`),
 	// which is handy for testing the fetch/retry path against a custom
 	// or deliberately-slow endpoint without rebuilding.
 	static const std::vector<std::string> chain = [] {
 		std::vector<std::string> c;
-		if (const char* ov = std::getenv("STEAMTOOLS_APPINFO_PROVIDER");
+		if (const char* ov = std::getenv("SLSSTEAM_APPINFO_PROVIDER");
 		    ov && *ov)
 		{
 			c.emplace_back(ov);
@@ -463,6 +463,7 @@ void pruneUnsupportedDepots(YAML::Node& body, uint32_t appId,
 	YAML::Node newDepots(YAML::NodeType::Map);
 	std::set<std::string> survivingOs;
 	int kept = 0;
+	int keptContent = 0;
 	int dropped = 0;
 	int totalNumeric = 0;
 	std::unordered_set<uint32_t> contentDlcAppIds;
@@ -533,31 +534,33 @@ void pruneUnsupportedDepots(YAML::Node& body, uint32_t appId,
 			continue;  // omit from newDepots
 		}
 		++kept;
+		if (!isVirtualDlc) ++keptContent;
 		newDepots[key] = YAML::Clone(depotNode);
 		if (dlcAppId != 0)
 		{
 			usableDlcAppIds.insert(dlcAppId);
 		}
 
-		// Track which OS this surviving depot supports so we can
-		// narrow common.oslist later.
-		if (depotNode.IsMap() && depotNode["config"] &&
-		    depotNode["config"]["oslist"])
+		if (!isVirtualDlc && depotNode.IsMap())
 		{
 			std::string osStr;
-			try { osStr = depotNode["config"]["oslist"].as<std::string>(); }
-			catch (...) {}
-			std::size_t i = 0;
-			while (i < osStr.size())
+			if (depotNode["config"] && depotNode["config"]["oslist"])
 			{
-				std::size_t j = osStr.find(',', i);
-				if (j == std::string::npos) j = osStr.size();
-				const auto piece = osStr.substr(i, j - i);
-				if (!piece.empty()) survivingOs.insert(piece);
-				i = j + 1;
+				try { osStr = depotNode["config"]["oslist"].as<std::string>(); }
+				catch (...) {}
 			}
+			addDepotPlatforms(survivingOs, osStr);
 		}
 	}
+	std::string commonOsList;
+	try
+	{
+		if (body["common"] && body["common"]["oslist"])
+			commonOsList = body["common"]["oslist"].as<std::string>();
+	}
+	catch (...) {}
+	const bool protonNeeded = requiresProtonMapping(
+		static_cast<std::size_t>(keptContent), survivingOs, commonOsList);
 
 	// Keep PackagePatch's synthetic ownership list aligned with the depots
 	// above.  A DLC is unsupported only when it had content entries and none
@@ -603,7 +606,7 @@ void pruneUnsupportedDepots(YAML::Node& body, uint32_t appId,
 		// Even when we drop nothing, the app may be natively
 		// non-Linux (e.g. the user added a windows-only title).  Mark
 		// it for Proton when no surviving depot targets Linux.
-		if (!survivingOs.empty() && !survivingOs.count("linux"))
+		if (protonNeeded)
 		{
 			markProtonNeeded(appId, publication);
 		}
@@ -619,7 +622,7 @@ void pruneUnsupportedDepots(YAML::Node& body, uint32_t appId,
 	// so Steam downloads + runs the windows depot on Linux instead of
 	// skipping it as "no applicable platform".  (Covers windows-only
 	// and windows+macos apps.)
-	if (!survivingOs.empty() && !survivingOs.count("linux"))
+	if (protonNeeded)
 	{
 		markProtonNeeded(appId, publication);
 	}
@@ -776,7 +779,8 @@ bool isDlcApp(const YAML::Node& body)
 	if (!type || !type.IsScalar()) return false;
 	std::string value = type.as<std::string>("");
 	for (char& ch : value)
-		ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+		ch = static_cast<char>(
+			Ascii::toLower(static_cast<unsigned char>(ch)));
 	return value == "dlc";
 }
 
@@ -800,9 +804,11 @@ SourceResult renderAppinfoBuffer(
 	if (!body.IsMap() || body.size() == 0) return SourceResult::InvalidResponse;
 
 	// Remember whether the provider supplied any concrete content before
-	// pruning. A valid token-limited response with no depot data may benefit
-	// from a secondary provider; concrete depots that are all rejected locally
-	// will not, so that result must be terminal.
+	// pruning. This still drives the IncompleteContent vs NoUsableContent split
+	// (no depots at all vs depots rejected locally), but both are now terminal:
+	// a well-formed response with no anonymous depot data is a stable property
+	// of the app, so shouldTryProviderFallback() no longer retries it against
+	// the steamcmd mirror (which reads the same anonymous product-info).
 	bool hadConcreteContent = hasUsableContentDepot(body);
 
 	// Token-locked apps (product-info access token denied to anonymous
@@ -1050,10 +1056,10 @@ std::int64_t cachePairMtimeSecsImpl(uint32_t appId) noexcept
 // Freshness window for legacy/full provider passes. Startup accepts a
 // structurally validated pair regardless of age; PICS change numbers drive
 // targeted refreshes without turning every relaunch into a catalog fetch.
-// Override via STEAMTOOLS_PROVISION_TTL (seconds; 0 disables the cache).
+// Override via SLSSTEAM_PROVISION_TTL (seconds; 0 disables the cache).
 long long provisionTtlSecs()
 {
-	if (const char* ov = std::getenv("STEAMTOOLS_PROVISION_TTL"); ov && *ov)
+	if (const char* ov = std::getenv("SLSSTEAM_PROVISION_TTL"); ov && *ov)
 	{
 		try { return std::stoll(ov); } catch (...) {}
 	}
@@ -1540,6 +1546,46 @@ private:
 	const char* p_;
 	const char* end_;
 };
+
+bool cachedWireRequiresProton(const std::string& wire) noexcept
+{
+	try
+	{
+		if (wire.empty()) return false;
+		CmVdfReader reader(wire.data(), wire.data() + wire.size());
+		const YAML::Node body = reader.parseAppinfo();
+		const YAML::Node depots =
+			body && body.IsMap() ? body["depots"] : YAML::Node();
+		if (!depots || !depots.IsMap()) return false;
+
+		std::size_t contentDepots = 0;
+		std::set<std::string> depotOs;
+		for (auto it = depots.begin(); it != depots.end(); ++it)
+		{
+			const std::string key = it->first.as<std::string>("");
+			if (key.empty() || std::any_of(key.begin(), key.end(),
+				[](char ch) { return ch < '0' || ch > '9'; })) continue;
+			const YAML::Node depot = it->second;
+			if (!depot || !depot.IsMap()) continue;
+			const bool virtualDlc = depot["dlcappid"] && !depot["manifests"];
+			if (virtualDlc) continue;
+			++contentDepots;
+			addDepotPlatforms(depotOs,
+				depot["config"] && depot["config"]["oslist"]
+					? depot["config"]["oslist"].as<std::string>("")
+					: std::string());
+		}
+
+		std::string commonOsList;
+		if (body["common"] && body["common"]["oslist"])
+			commonOsList = body["common"]["oslist"].as<std::string>("");
+		return requiresProtonMapping(contentDepots, depotOs, commonOsList);
+	}
+	catch (...)
+	{
+		return false;
+	}
+}
 
 bool readCacheMetadataFile(
 	uint32_t appId,
@@ -2038,6 +2084,14 @@ std::int64_t cachePairMtimeSecs(uint32_t appId) noexcept
 	return cachePairMtimeSecsImpl(appId);
 }
 
+std::int64_t dlcMetadataCacheMtimeSecs(uint32_t appId) noexcept
+{
+	struct stat st{};
+	if (appId == 0 || stat(getDlcMetadataPath(appId).c_str(), &st) != 0)
+		return 0;
+	return static_cast<std::int64_t>(st.st_mtime);
+}
+
 void sha1Bytes(const void* data, std::size_t size, std::uint8_t out[20])
 {
 	sha1BytesInternal(data, size, out);
@@ -2139,6 +2193,142 @@ bool readValidatedCacheBuffer(uint32_t appId, std::string& buffer)
 	if (!cacheLock.acquired()) return false;
 	std::string diag;
 	return readValidatedCacheBufferLocked(appId, buffer, diag);
+}
+
+namespace
+{
+// Per-app authoritative-set contribution memo. locallyAuthoritativeApps ran once
+// per publish and re-read+SHA-validated each app's cache pair, its metadata
+// sidecar, and its DLC-metadata YAML (plus a file-lock acquisition per app). On
+// a large library that is a second O(N) pass on the hot-reload critical path,
+// alongside HotReloadInputs::buildFromCaches. An app's contribution is a pure
+// function of its two cache-file mtimes plus its managed/synthetic status, so
+// cache it and recompute only when one of those changes.
+struct AuthMemoKey
+{
+	std::int64_t pairMtime = -1;
+	std::int64_t dlcMetaMtime = -1;
+	bool managed = false;
+	bool synthetic = false;
+
+	bool operator==(const AuthMemoKey& o) const
+	{
+		return pairMtime == o.pairMtime && dlcMetaMtime == o.dlcMetaMtime &&
+			managed == o.managed && synthetic == o.synthetic;
+	}
+};
+
+struct AuthContribution
+{
+	std::vector<std::uint32_t> ids;
+	bool memoizable = true;
+};
+
+// Resolve one app's contribution to the authoritative set: the app itself when
+// it is authoritative, plus its DLC children when it is an authoritative managed
+// base. A transient cache-lock miss is reported non-memoizable so it is retried
+// on the next pass rather than frozen as "not authoritative".
+AuthContribution computeAuthContribution(
+	std::uint32_t appId, bool managed, bool synthetic)
+{
+	AuthContribution out;
+	bool authoritative = false;
+
+	// Preserve the existing marker-only compatibility behavior even after
+	// managed-source cleanup moved the readable cache pair aside.
+	if (cache::locallyAuthoritative({
+			.managed = managed, .active = true, .synthetic = synthetic}))
+	{
+		authoritative = true;
+	}
+	else if (managed)
+	{
+		// Only real contention is a reason to defer: reading the pair under an
+		// unusable lock path is still a read, and treating "no trustworthy lock
+		// here" as "not authoritative" silently disarmed the outgoing-PICS
+		// filter for the app on every publish.
+		ProcessLock::FileLock cacheLock(cacheLockPath(), false);
+		if (cacheLock.heldByAnother())
+		{
+			out.memoizable = false;
+			return out;
+		}
+		std::string wire;
+		std::string validationDiag;
+		if (readValidatedCacheBufferLocked(appId, wire, validationDiag))
+		{
+			std::string metadataText;
+			cache::CacheMetadataView metadata;
+			if (readCacheMetadataFile(appId, metadataText, metadata) &&
+				metadata.appId == appId && cache::locallyAuthoritative({
+					.managed = true,
+					.active = true,
+					.cacheValid = true,
+					.hasNormalizedMarker = metadata.hasNormalized,
+					.normalized = metadata.normalized}))
+			{
+				authoritative = true;
+			}
+		}
+	}
+
+	if (!authoritative) return out;
+	out.ids.push_back(appId);
+	if (managed)
+	{
+		DlcMetadata::CacheRecord metadata;
+		if (readValidatedDlcMetadataCache(appId, 0, metadata))
+		{
+			std::unordered_set<std::uint32_t> children;
+			DlcMetadata::appendChildAppIds(metadata, children);
+			out.ids.insert(out.ids.end(), children.begin(), children.end());
+		}
+	}
+	return out;
+}
+
+std::mutex g_authMemoMu;
+std::unordered_map<std::uint32_t, std::pair<AuthMemoKey, std::vector<std::uint32_t>>>
+	g_authMemo;
+} // namespace
+
+std::unordered_set<std::uint32_t> locallyAuthoritativeApps(
+	const std::unordered_set<std::uint32_t>& managedCandidates,
+	const std::unordered_set<std::uint32_t>& activeCandidates)
+{
+	std::unordered_set<std::uint32_t> authoritative;
+	authoritative.reserve(activeCandidates.size());
+
+	std::lock_guard<std::mutex> memoLock(g_authMemoMu);
+	for (auto it = g_authMemo.begin(); it != g_authMemo.end();)
+		it = activeCandidates.count(it->first) == 0 ? g_authMemo.erase(it)
+		                                            : std::next(it);
+
+	for (const std::uint32_t appId : activeCandidates)
+	{
+		const AuthMemoKey key{
+			cachePairMtimeSecs(appId),
+			dlcMetadataCacheMtimeSecs(appId),
+			managedCandidates.count(appId) != 0,
+			isSynthesizedApp(appId),
+		};
+		const auto it = g_authMemo.find(appId);
+		if (it != g_authMemo.end() && it->second.first == key)
+		{
+			for (const std::uint32_t id : it->second.second)
+				authoritative.insert(id);
+			continue;
+		}
+		const AuthContribution contribution =
+			computeAuthContribution(appId, key.managed, key.synthetic);
+		if (contribution.memoizable)
+			g_authMemo[appId] = {key, contribution.ids};
+		else
+			g_authMemo.erase(appId);
+		for (const std::uint32_t id : contribution.ids)
+			authoritative.insert(id);
+	}
+	return authoritative;
 }
 
 bool readValidatedDlcMetadataCache(
@@ -2336,7 +2526,13 @@ bool terminalProvisionResultKnown(uint32_t appId,
 bool noteTerminalProvisionResult(uint32_t appId, SourceResult result,
 	uint32_t changeNumber, const CachePublicationToken& publication)
 {
-	if (result != SourceResult::VirtualDlc && result != SourceResult::NoUsableContent)
+	// IncompleteContent (no depot data at all) shares the NoUsableContent
+	// persistence shape: both are "no installable content" verdicts bound to
+	// the app's change number + local-input fingerprint, so they self-invalidate
+	// when Valve publishes depots or the user supplies a depot key/manifest.
+	if (result != SourceResult::VirtualDlc &&
+	    result != SourceResult::NoUsableContent &&
+	    result != SourceResult::IncompleteContent)
 		return false;
 	ProvisionTerminal::Record record{
 		.schema = ProvisionTerminal::kSchema,
@@ -2487,14 +2683,20 @@ ProvisionOutcome provisionAppDetailed(uint32_t appId,
 				        ? "concrete depots are not usable"
 				        : cmResult == SourceResult::VirtualDlc
 				            ? "DLC has no usable content depots"
-				            : "local cache write failed");
+				            : cmResult == SourceResult::IncompleteContent
+				                ? "no depot data available anonymously"
+				                : "local cache write failed");
 				// A content verdict is a property of the app, not of this
 				// attempt: repeating it costs a CM round-trip and returns the
-				// same answer. A local write failure is NOT terminal in that
-				// sense — the next pass may well succeed — so it stays
-				// retryable.
+				// same answer. IncompleteContent (token-locked/delisted: no
+				// depot data at all) is equally stable — the steamcmd mirror
+				// reads the same anonymous product-info — so persist it too and
+				// stop re-fetching it every boot. A local write failure is NOT
+				// terminal in that sense — the next pass may well succeed — so
+				// it stays retryable.
 				if (cmResult == SourceResult::NoUsableContent ||
-				    cmResult == SourceResult::VirtualDlc)
+				    cmResult == SourceResult::VirtualDlc ||
+				    cmResult == SourceResult::IncompleteContent)
 					noteTerminalProvisionResult(appId, cmResult, cn, publication);
 				if (cmResult == SourceResult::VirtualDlc)
 					return ProvisionOutcome::NotApplicable;
@@ -2731,10 +2933,10 @@ int provisionAppsPass(const std::string& appinfoVdfPath,
 	// through to the steamcmd.net HTTP chain inside provisionApp.  Skip
 	// only those apps whose buffer is still fresh on disk (the cache TTL
 	// would short-circuit them anyway), so a warm relaunch makes no CM
-	// request at all.  Disable entirely via STEAMTOOLS_DISABLE_CM=1.
+	// request at all.  Disable entirely via SLSSTEAM_DISABLE_CM=1.
 	ProvisionPassState pass;
 	const bool cmDisabled = [] {
-		const char* v = std::getenv("STEAMTOOLS_DISABLE_CM");
+		const char* v = std::getenv("SLSSTEAM_DISABLE_CM");
 		return v && *v && std::string(v) != "0";
 	}();
 	if (!cmDisabled)
@@ -3254,29 +3456,45 @@ bool asyncProvisioningEnabled()
 {
 	return asyncProvisionEnabled(
 		g_config.asyncProvision.get(),
-		std::getenv("STEAMTOOLS_ASYNC_PROVISION"));
+		std::getenv("SLSSTEAM_ASYNC_PROVISION"));
 }
 
 void flushPendingProtonMappings()
 {
 	std::lock_guard<std::mutex> passLock(g_provisionPassMu);
+	// Reconstruct this process-local set from validated normalized caches as
+	// well as the pending sidecar. This migrates caches produced by older builds
+	// whose platform fallback missed content depots without config.oslist.
+	for (const std::uint32_t appId : g_config.managedAppIds.get())
+	{
+		std::string wire;
+		if (readValidatedCacheBuffer(appId, wire) &&
+			cachedWireRequiresProton(wire))
+		{
+			g_needProton.insert(appId);
+		}
+	}
 	const auto loaded = loadPendingProtonMappings();
 	if (!loaded.lockAcquired || loaded.status == PendingProtonFileStatus::Invalid)
 	{
 		// A lock/read/parse failure is not evidence that the file is empty.
 		// Leave both the on-disk mappings and any in-memory retry state intact.
+		if (!g_needProton.empty()) (void)injectProtonMappings();
 		return;
 	}
 	if (loaded.status == PendingProtonFileStatus::Missing)
+	{
+		if (!g_needProton.empty()) (void)injectProtonMappings();
 		return;
-	if (loaded.ids.empty())
+	}
+	g_needProton.insert(loaded.ids.begin(), loaded.ids.end());
+	if (g_needProton.empty())
 	{
 		// This also removes entries left behind by a previous config removal;
 		// the valid file was filtered against current management above.
 		(void)clearPendingProtonMappingsIfUnchanged(loaded.fileIds);
 		return;
 	}
-	g_needProton.insert(loaded.ids.begin(), loaded.ids.end());
 	if (injectProtonMappings())
 		(void)clearPendingProtonMappingsIfUnchanged(loaded.fileIds);
 }
@@ -3307,6 +3525,19 @@ std::vector<std::uint32_t> publishRuntimeAppInfo(
 
 	const std::unordered_set<std::uint32_t> scoped(
 		selected.begin(), selected.end());
+
+	// Publish the full managed authority set BEFORE the splice, matching the
+	// ordering HotReload::publishAppInfoScopes already uses. The set arms the
+	// outgoing-PICS filter that keeps Steam from replacing a spliced record with
+	// an empty, token-denied refresh, and it protects every managed app that
+	// already has an appinfo entry on disk — none of which depends on this
+	// splice succeeding. Publishing after the splice meant one failed live
+	// transaction withdrew that protection from unrelated apps, so Steam wiped
+	// their `common` section and the library stopped rendering them at all.
+	const auto managed = g_config.managedAppIds.get();
+	AppInfoState::publishAuthoritative(locallyAuthoritativeApps(
+		managed, g_config.addedAppIds.get()));
+
 	if (AppInfoVdf::injectCachedApps(appinfoVdfPath, scoped) == 0)
 	{
 		g_pLog->warn(
@@ -3315,16 +3546,6 @@ std::vector<std::uint32_t> publishRuntimeAppInfo(
 			selected.size());
 		return {};
 	}
-
-	// A synthetic cache pair is the complete product-info authority for its
-	// token-locked app. Publish the full managed intersection before Steam
-	// reads the just-spliced record so the derived CAppData skip byte persists.
-	std::unordered_set<std::uint32_t> authoritative;
-	const auto synthetic = SynthMark::loadAll(getCacheDir());
-	const auto managed = g_config.managedAppIds.get();
-	for (const std::uint32_t appId : synthetic)
-		if (managed.count(appId) != 0) authoritative.insert(appId);
-	AppInfoState::publishAuthoritative(authoritative);
 
 	const AppInfoReload::Result reloaded =
 		AppInfoState::reloadFromDisk(selected);
@@ -3387,7 +3608,10 @@ bool acquireDlcMetadataLiveCommitGuard(void* opaque) noexcept
 		auto& guard = *static_cast<DlcMetadataLiveCommitGuard*>(opaque);
 		guard.publicationLock = std::unique_lock<std::mutex>(g_cachePublicationMu);
 		guard.cacheLock.emplace(cacheLockPath(), false);
-		if (!guard.cacheLock->acquired()) return false;
+		// Refuse the commit only when another owner really holds the cache. An
+		// unusable lock path is not evidence of a competing writer, and treating
+		// it as one abandoned the live DLC splice on every hot add.
+		if (guard.cacheLock->heldByAnother()) return false;
 		const auto managed = g_config.managedAppIds.get();
 		for (const DlcMetadataWork* item : guard.work)
 		{
@@ -3806,9 +4030,14 @@ DlcInjectionIds collectDlcAppIdsForAddedApps(bool* complete)
 		std::string wire;
 		if (!readValidatedCacheBufferLocked(appId, wire, validationDiag))
 		{
+			// Deliberately fail closed for the whole snapshot: the collected set
+			// REPLACES package 0's extra ids, so publishing it without this app
+			// would revoke DLC that is already injected. But one app blocking DLC
+			// for the entire fleet has to be visible, not a debug line.
 			if (g_pLog)
-				g_pLog->debug(
-				    "AppInfoProvision: DLC snapshot rejected cache pair for app=%u: %s\n",
+				g_pLog->info(
+				    "AppInfoProvision: DLC snapshot rejected cache pair for app=%u "
+				    "(%s); DLC injection stays on its previous set this pass\n",
 				    appId, validationDiag.c_str());
 			return {};
 		}

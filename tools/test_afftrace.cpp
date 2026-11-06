@@ -8,7 +8,7 @@
 //
 // What must hold:
 //   * off by default        -> unset opt-in writes nothing and creates no file
-//   * explicit opt-in       -> STEAMTOOLS_AFFTRACE=1 enables it
+//   * explicit opt-in       -> SLSSTEAM_AFFTRACE=1 enables it
 //   * 0600 + bounded        -> sink is user-only and stops at the record cap
 //   * privacy               -> only the fixed field set is ever written
 //   * hot path gated        -> IPC frame records only inside a call window
@@ -70,7 +70,7 @@ static void enableTracing()
 {
 	AffTrace::reset();
 	::setenv("HOME", g_dir.c_str(), 1);
-	::setenv("STEAMTOOLS_AFFTRACE", "1", 1);
+	::setenv("SLSSTEAM_AFFTRACE", "1", 1);
 	::unlink(tracePath().c_str());
 	CHECK(AffTrace::init(), "init() enables tracing with the opt-in set");
 }
@@ -193,7 +193,7 @@ static void test_disabled_by_default()
 	std::printf("[4] disabled by default\n");
 	AffTrace::reset();
 	::setenv("HOME", g_dir.c_str(), 1);
-	::unsetenv("STEAMTOOLS_AFFTRACE");
+	::unsetenv("SLSSTEAM_AFFTRACE");
 	::unlink(tracePath().c_str());
 
 	CHECK(!AffTrace::init(), "init() returns false without the opt-in");
@@ -430,7 +430,7 @@ static void test_record_bound()
 
 int main()
 {
-	char tmpl[] = "/tmp/steamtools-afftrace-test-XXXXXX";
+	char tmpl[] = "/tmp/slssteam-afftrace-test-XXXXXX";
 	const char* dir = ::mkdtemp(tmpl);
 	if (dir == nullptr)
 	{

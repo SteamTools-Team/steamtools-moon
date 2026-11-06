@@ -14,6 +14,7 @@
 #include <cassert>
 #include <cstdint>
 #include <ctime>
+#include <fcntl.h>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -99,7 +100,7 @@ bool hasScopedValidationArtifact(const std::string& directory)
 {
 	for (const auto& entry : std::filesystem::directory_iterator(directory))
 	{
-		if (entry.path().filename().string().find(".steamtools-validate.") !=
+		if (entry.path().filename().string().find(".slssteam-validate.") !=
 			std::string::npos)
 			return true;
 	}
@@ -137,7 +138,7 @@ bool cacheMarkerAllowsRead(uint32_t)
 int main()
 {
 	const std::string root =
-		"/tmp/steamtools-appinfo-transaction." + std::to_string(getpid());
+		"/tmp/slssteam-appinfo-transaction." + std::to_string(getpid());
 	const std::string configHome = root + "/config";
 	const std::string cacheDir = configHome + "/SteamTools/cache";
 	const std::string appinfo = root + "/appcache/appinfo.vdf";
@@ -179,7 +180,7 @@ int main()
 	assert(orphanQuarantined);
 	const auto published = readAll(appinfo);
 	assert(!published.empty());
-	assert(std::filesystem::exists(appinfo + ".steamtools-previous"));
+	assert(std::filesystem::exists(appinfo + ".slssteam-previous"));
 
 	// Runtime publication is targeted: a refresh for 1001 must not splice the
 	// separately valid cache pair for 1002 into Steam's backing file.
@@ -250,7 +251,7 @@ int main()
 	// must not replace that file or create/overwrite its rollback snapshot.
 	const auto racedAppinfo = root + "/appcache/raced.vdf";
 	createEmptyAppInfo(racedAppinfo);
-	const auto raceRollback = racedAppinfo + ".steamtools-previous";
+	const auto raceRollback = racedAppinfo + ".slssteam-previous";
 	std::string rollbackSeedError;
 	assert(AtomicFile::write(
 		raceRollback, "existing rollback", rollbackSeedError));
@@ -270,8 +271,8 @@ int main()
 	assert(AppInfoVdf::injectAllCached(appinfo) == 2);
 	assert(readAll(appinfo) == published);
 
-	setenv("STEAMTOOLS_ASYNC_PROVISION", "1", 1);
-	setenv("STEAMTOOLS_PROVISION_TTL", "300", 1);
+	setenv("SLSSTEAM_ASYNC_PROVISION", "1", 1);
+	setenv("SLSSTEAM_PROVISION_TTL", "300", 1);
 	const auto staleBuffer = cacheDir + "/picsbuffer_1001.bin";
 	struct timespec staleTimes[2]{};
 	const auto staleNow = std::time(nullptr) - 3600;
@@ -288,8 +289,8 @@ int main()
 	createEmptyAppInfo(fallbackAppinfo);
 	assert(AppInfoVdf::injectAllCached(fallbackAppinfo) == 2);
 
-	unsetenv("STEAMTOOLS_ASYNC_PROVISION");
-	unsetenv("STEAMTOOLS_PROVISION_TTL");
+	unsetenv("SLSSTEAM_ASYNC_PROVISION");
+	unsetenv("SLSSTEAM_PROVISION_TTL");
 
 	// A normal pair retaining a stale synthetic marker is inconsistent and
 	// must not be injected; a synthetic pair is accepted only after its marker
@@ -327,7 +328,7 @@ int main()
 
 	// Simulate a torn/corrupt v41 file.  Keep the published snapshot as the
 	// rollback baseline so recovery is tested against a known-good file.
-	std::filesystem::copy_file(appinfo, appinfo + ".steamtools-previous",
+	std::filesystem::copy_file(appinfo, appinfo + ".slssteam-previous",
 	                           std::filesystem::copy_options::overwrite_existing);
 	{
 		std::ofstream out(appinfo, std::ios::binary | std::ios::trunc);
@@ -369,5 +370,71 @@ int main()
 	AppInfoProvision::testCacheMarkerAllowsRead = false;
 	assert(AppInfoVdf::injectAllCached(invalidatedAppinfo) == 0);
 	AppInfoProvision::testCacheMarkerAllowsRead = true;
+
+	// The boot splice is what makes a managed app visible on the next start, so
+	// a lock path we cannot vouch for must not cost the whole pass. A
+	// group/other-accessible lock file is not a private file of ours, carries no
+	// ownership information, and therefore is not evidence of a competing
+	// writer: the splice has to proceed.
+	const auto untrustedLockAppinfo = root + "/appcache/untrusted-lock.vdf";
+	createEmptyAppInfo(untrustedLockAppinfo);
+	{
+		const auto lockPath = untrustedLockAppinfo + ".slssteam.lock";
+		const int lockFd = open(lockPath.c_str(), O_CREAT | O_RDWR, 0666);
+		assert(lockFd >= 0);
+		close(lockFd);
+		assert(AppInfoVdf::injectAllCached(untrustedLockAppinfo) == 2);
+		std::filesystem::remove(lockPath);
+	}
+
+	// Proceeding without a trusted lock is only safe because the boot splice
+	// publishes conditionally now: a writer that wins the identity race keeps
+	// its file, and we report failure instead of clobbering it.
+	const auto racedBootAppinfo = root + "/appcache/raced-boot.vdf";
+	createEmptyAppInfo(racedBootAppinfo);
+#ifdef APPINFO_VDF_TESTING
+	AppInfoVdf::setBeforeScopedPublishHook([&] {
+		std::string raceError;
+		assert(AtomicFile::write(racedBootAppinfo, "steam writer", raceError));
+	});
+#endif
+	assert(AppInfoVdf::injectAllCached(racedBootAppinfo) == 0);
+	assert(readAll(racedBootAppinfo) == "steam writer");
+	assert(!hasScopedValidationArtifact(root + "/appcache"));
+
+	// One unusable DLC metadata record must not cost every other app its DLC.
+	// This used to abort the whole batch and return 0 without a log line.
+	const auto partialMetadataAppinfo = root + "/appcache/partial-metadata.vdf";
+	createEmptyAppInfo(partialMetadataAppinfo);
+	{
+		const std::string goodWire = wireFor(515151);
+		const auto emptyBaseline = readAll(partialMetadataAppinfo);
+		const std::vector<AppInfoVdf::MetadataApp> mixed = {
+			{0, 11, sha1Of(goodWire), goodWire},        // no appid: skipped
+			{3001, 12, std::string(4, 'x'), goodWire},  // sha not 20 bytes: skipped
+			{3002, 13, sha1Of(goodWire), goodWire},     // usable
+		};
+		// Only the usable record is accounted for, and it really landed.
+		assert(AppInfoVdf::injectValidatedMetadataApps(
+			partialMetadataAppinfo, mixed) == 1);
+		const auto afterPartial = readAll(partialMetadataAppinfo);
+		assert(afterPartial != emptyBaseline);
+		// Replaying the same batch is idempotent: 3002 now counts as already
+		// present and the unusable records are still skipped, not retried into
+		// the file.
+		assert(AppInfoVdf::injectValidatedMetadataApps(
+			partialMetadataAppinfo, mixed) == 1);
+		assert(readAll(partialMetadataAppinfo) == afterPartial);
+
+		// The rejected record on its own changes nothing and reports nothing
+		// accounted, so a caller can still tell a fully failed batch apart.
+		const auto rejectedOnlyAppinfo = root + "/appcache/rejected-only.vdf";
+		createEmptyAppInfo(rejectedOnlyAppinfo);
+		const auto rejectedBaseline = readAll(rejectedOnlyAppinfo);
+		assert(AppInfoVdf::injectValidatedMetadataApps(
+			rejectedOnlyAppinfo,
+			{{3001, 12, std::string(4, 'x'), goodWire}}) == 0);
+		assert(readAll(rejectedOnlyAppinfo) == rejectedBaseline);
+	}
 	return 0;
 }

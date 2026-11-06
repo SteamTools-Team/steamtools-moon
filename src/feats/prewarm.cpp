@@ -33,6 +33,13 @@ namespace Prewarm
 namespace
 {
 
+struct WarmTarget
+{
+	uint32_t appId;
+	uint32_t depotId;
+	uint64_t gid;
+};
+
 // Only ever flips false -> true.  The background worker runs for the rest
 // of the Steam session, so once it is up we never start a second one.
 std::atomic<bool> g_started{false};
@@ -132,18 +139,29 @@ void runLoop()
 	{
 		if (g_stopRequested.load(std::memory_order_acquire))
 			return;
-		std::vector<DepotGid> targets;
+		std::vector<WarmTarget> targets;
 		bool newTarget = false;
 		bool hasEligibleTarget = false;
 		const auto added = g_config.addedAppIds.get();
 		if (!added.empty())
 		{
 			std::set<DepotGid> seenTargets;
-			auto appendTarget = [&targets, &seenTargets](const DepotGid& target)
+			auto appendTarget = [&targets, &seenTargets](uint32_t appId,
+			                                                  const DepotGid& target)
 			{
 				const auto [depotId, gid] = target;
 				if (depotId && gid && seenTargets.insert(target).second)
-					targets.push_back(target);
+					targets.push_back({appId, depotId, gid});
+			};
+			auto appendManagedTarget = [&](uint32_t appId,
+			                               const DepotGid& target,
+			                               bool pinned)
+			{
+				if (DepotKey::manifestInManagedScope(
+				        appId, target.first, pinned))
+				{
+					appendTarget(appId, target);
+				}
 			};
 
 			const auto hasKey = [](uint32_t depotId) {
@@ -162,12 +180,13 @@ void runLoop()
 					    ? std::vector<DepotGid>{}
 					    : planStageTargets({buf}, hasKey);
 					for (const auto& target : planPinnedStageTargets(publicTargets, pins))
-						appendTarget(target);
+						appendManagedTarget(
+							appId, target, pins.count(target.first) != 0);
 				}
 				else if (!buf.empty())
 				{
 					for (const auto& target : planStageTargets({buf}, hasKey))
-						appendTarget(target);
+						appendManagedTarget(appId, target, false);
 				}
 			}
 
@@ -198,7 +217,7 @@ void runLoop()
 				for (const auto& wm : extractWorkshopManifests(acf, appId))
 				{
 					const auto before = targets.size();
-					appendTarget(wm);
+					appendManagedTarget(appId, wm, false);
 					if (targets.size() != before) ++workshopCount;
 				}
 			}
@@ -211,7 +230,7 @@ void runLoop()
 				    targets.size(), added.size(), workshopCount);
 			}
 
-			for (const auto& [depotId, gid] : targets)
+			for (const auto& [appId, depotId, gid] : targets)
 			{
 				// A repeatedly inaccessible target waits for the bounded cooldown
 				// below before it is admitted for another real attempt.
@@ -224,7 +243,7 @@ void runLoop()
 				// re-fetched so the next planning pass finds it and skips
 				// BYldRequestDepotManifest entirely.
 				const bool ready = ManifestFetch::awaitManifestBlob(
-				    gid, depotId, ManifestFetch::getTimeoutSec());
+				    gid, appId, depotId, ManifestFetch::getTimeoutSec());
 				if (ready)
 				{
 					ManifestStore::archiveManifest(depotId, gid);
@@ -260,7 +279,11 @@ void runLoop()
 
 		}
 
-		newTarget = backoff.observeTargets(targets);
+		std::vector<DepotGid> targetKeys;
+		targetKeys.reserve(targets.size());
+		for (const auto& target : targets)
+			targetKeys.emplace_back(target.depotId, target.gid);
+		newTarget = backoff.observeTargets(targetKeys);
 		const bool noOpPass = !targets.empty() && !hasEligibleTarget && !newTarget;
 		backoff.recordPass(noOpPass);
 		if (noOpPass && backoff.noOpPasses() == PassBackoff::kNoOpPassesBeforeBackoff)

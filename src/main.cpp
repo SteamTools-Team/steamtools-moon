@@ -1,5 +1,6 @@
 #include <dlfcn.h>
 #include "afftrace.hpp"
+#include "ascii.hpp"
 #include "sdk/steam.hpp"
 #include "api.hpp"
 #include "runtimedir.hpp"
@@ -28,6 +29,8 @@
 #include "feats/depotkey.hpp"
 #include "feats/hotreload.hpp"
 #include "feats/manifestid.hpp"
+#include "feats/manifestdonor.hpp"
+#include "feats/manifestcode.hpp"
 #include "feats/steamstub.hpp"
 #include "feats/stats_policy.hpp"
 
@@ -99,6 +102,8 @@ static void unload()
 	// An audited non-Steam process returns from setup before logging/hooks
 	// exist. Hooks::remove logs, so this early no-op must precede teardown.
 	if (!g_pLog) return;
+	ManifestDonor::stop();
+	ManifestCode::resetSession();
 	HotReload::shutdown();
 	Hooks::remove();
 
@@ -198,10 +203,10 @@ static void setup()
 	// setup lock. Each audit namespace has its own statics; a secondary copy
 	// still needs to return narrow flags even when it skips the heavier setup.
 	const bool narrowAudit = AuditBinding::narrowValueEnabled(
-		std::getenv("STEAMTOOLS_AUDIT_NARROW"));
+		std::getenv("SLSSTEAM_AUDIT_NARROW"));
 	const bool bindAllAudit = !narrowAudit
 		|| AuditBinding::bindAllValueEnabled(
-			std::getenv("STEAMTOOLS_AUDIT_BINDALL"));
+			std::getenv("SLSSTEAM_AUDIT_BINDALL"));
 	g_auditBindAll.store(bindAllAudit, std::memory_order_release);
 	g_auditPolicyReady.store(true, std::memory_order_release);
 
@@ -226,7 +231,7 @@ static void setup()
 	}
 
 	g_pLog->debug("SteamTools loading in %s\n", proc.name);
-	// Thread-affinity diagnostics: opt-in only (STEAMTOOLS_AFFTRACE=1), a no-op
+	// Thread-affinity diagnostics: opt-in only (SLSSTEAM_AFFTRACE=1), a no-op
 	// otherwise. Must come before the watchers and hooks so the very first
 	// callback and IPC frame are covered when it IS enabled.
 	if (AffTrace::init())
@@ -338,7 +343,19 @@ static void setup()
 		AppInfoProvision::flushPendingProtonMappings();
 
 		const auto candidate = AppInfoVdf::findExistingPath();
-		if (!candidate.empty())
+		if (candidate.empty())
+		{
+			// Provisioning, the appinfo splice and the DLC metadata splice all
+			// live inside this block, so an undiscoverable appinfo.vdf silently
+			// skipped every step that makes a managed app visible. Steam has not
+			// been bootstrapped (no appcache yet) or its root is not one of the
+			// supported layouts; either way the user needs to know why nothing
+			// happened.
+			g_pLog->warn(
+			    "AppInfoProvision: no Steam appinfo cache found; managed games "
+			    "cannot be prepared this boot (open Steam once to create it)\n");
+		}
+		else
 		{
 			const auto preinitAction =
 			    AppInfoProvision::preinitProvisionAction(asyncProvision);
@@ -465,7 +482,7 @@ static void load()
 	// genuine "the other module isn't mapped yet" retry on the next objopen
 	// still works) and BEFORE the heavy work.
 	{
-		// The lock used to be /tmp/.steamtools.load.<pid>, opened without O_EXCL or
+		// The lock used to be /tmp/.slssteam.load.<pid>, opened without O_EXCL or
 		// O_NOFOLLOW. Any local process could pre-create that path and hold an
 		// exclusive flock on it; our flock(LOCK_NB) then failed and we SKIPPED
 		// the hooking pass — a lock file that doubled as an injection kill
@@ -512,7 +529,7 @@ static void load()
 	// Runtime evidence is opt-in and used only by the isolated repair runner.
 	// Bind every event to the exact SteamTools.so bytes that this process loaded;
 	// a source diff or a successful log line alone is not sufficient evidence.
-	if (const char* attestationPath = getenv("STEAMTOOLS_ATTESTATION_FILE");
+	if (const char* attestationPath = getenv("SLSSTEAM_ATTESTATION_FILE");
 	    attestationPath != nullptr && attestationPath[0] != '\0')
 	{
 		lm_module_t selfModule {};
@@ -628,6 +645,12 @@ static void load()
 
 	if (!Hooks::setup())
 	{
+		// Hooks::setup() returns false when a REQUIRED hook's pattern did not
+		// resolve.  This tears every hook down and runs Steam unmodified, so it
+		// must never be silent: a bare unload() here previously presented as
+		// "injection did nothing" (no ownership, Buy button) with no log line.
+		g_pLog->warn("Hooks::setup() reported failure; aborting injection and "
+		             "running unmodified\n");
 		unload();
 		return;
 	}
@@ -657,12 +680,12 @@ static void load()
 		{
 			auto root = std::filesystem::path(selfMod.path).parent_path().string();
 			SteamStub::setup(root.c_str());
-			// Background-warm the dedicated Wine prefix so the user
-			// doesn't pay the first-run wineboot cost when launching
-			// an app that goes through the wrapper-integration helper.
-			// Detached worker; onLaunchApp will join on this before
-			// invoking the helper.
-			SteamStub::warmupAsync();
+			// No startup Wine prewarm: executable processing is opt-in per
+			// app via the `--steamless` launch option (default runs the stub
+			// in place), so the vast majority of launches never touch the
+			// Wine prefix. onLaunchApp warms it on demand the first time an
+			// app actually opts in, so those users still get a warmed prefix
+			// before processing runs.
 		}
 		else
 		{
@@ -717,10 +740,27 @@ static void load()
 		}
 	}
 	}
+	catch (const std::exception& e)
+	{
+		// A thrown std::exception here silently tore down every hook (unload()
+		// closes the owner queue) and left Steam unmodified.  Surface what() so
+		// a client-update behaviour break is diagnosable from the log instead of
+		// presenting as "injection silently did nothing".
+		if (g_pLog) g_pLog->warn("setup() aborted by exception: %s\n", e.what());
+		try
+		{
+			unload();
+		}
+		catch (...)
+		{
+		}
+		return;
+	}
 	catch (...)
 	{
 		// Never let an exception cross the rtld-audit callback boundary: the
 		// dynamic linker cannot unwind through la_objopen safely.
+		if (g_pLog) g_pLog->warn("setup() aborted by a non-std exception\n");
 		try
 		{
 			unload();
@@ -905,7 +945,8 @@ namespace
 		for (; argv[n]; ++n)
 		{
 			const char* p = std::strstr(argv[n], CefPort::kSwitchPrefix);
-			if (p && std::isdigit(static_cast<unsigned char>(p[std::strlen(CefPort::kSwitchPrefix)])))
+			if (p && Ascii::isDigit(static_cast<unsigned char>(
+				p[std::strlen(CefPort::kSwitchPrefix)])))
 			{
 				any = true;
 			}
@@ -1069,7 +1110,7 @@ extern "C" unsigned int la_objopen(struct link_map* map,
 
 	// Keep the historical bind-all policy unless narrowing is explicitly
 	// enabled after its live importer/rewrite gates have been measured.
-	// STEAMTOOLS_AUDIT_BINDALL=1 remains a visible rollback switch for a
+	// SLSSTEAM_AUDIT_BINDALL=1 remains a visible rollback switch for a
 	// narrowed session, while the default is already the safe rollback.  The
 	// preinit-ready guard avoids getenv() in this loader callback; before setup
 	// publishes policy, bind-all is the conservative behavior.

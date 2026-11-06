@@ -12,7 +12,7 @@ unset _DGU_LIB_DIR
 DGU_SERVICE=steamtools-desktop-guardian.service
 DGU_PATH=steamtools-desktop-guardian.path
 DGU_TIMER=steamtools-desktop-guardian.timer
-DGU_UNIT_SENTINEL='# X-SteamToolsMoon-GuardianUnit=true'
+DGU_UNIT_SENTINEL='# X-SLSteamMoon-GuardianUnit=true'
 
 dgu_log() {
 	printf 'desktop-guardian-units: %s\n' "$*" >&2
@@ -243,7 +243,7 @@ dgu_remove_units() {
 # from the guardian's own service/path/timer files.
 : "${DGU_SYSTEMD_ESCAPE:=systemd-escape}"
 DGU_AUTOSTART_DROPIN=steamtools-guardian.conf
-DGU_AUTOSTART_SENTINEL='# X-SteamToolsMoon-AutostartDropIn=true'
+DGU_AUTOSTART_SENTINEL='# X-SLSteamMoon-AutostartDropIn=true'
 
 dgu_autostart_unit_name() {
 	local id="$1" stem escaped

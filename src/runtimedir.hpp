@@ -6,7 +6,7 @@
 //   /tmp/SteamTools.API          — a control channel with no access control at
 //                                all. Any local process that can write to it
 //                                submits `install|<appid>|<library>`.
-//   /tmp/.steamtools.load.<pid>  — the "only hook once per process" lock, opened
+//   /tmp/.slssteam.load.<pid>  — the "only hook once per process" lock, opened
 //                                without O_EXCL or O_NOFOLLOW. A process that
 //                                pre-creates it and holds an exclusive flock
 //                                makes our flock(LOCK_NB) fail, and the old code

@@ -6,6 +6,8 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <fstream>
+#include <iterator>
 #include <string_view>
 
 static int g_failures = 0;
@@ -23,6 +25,69 @@ static bool has(const std::set<uint32_t>& ids, uint32_t id)
 
 int main()
 {
+	CHECK(AppInfoProvision::requiresProtonMapping(
+	          /*keptDepots=*/1, {}, "windows"),
+	      "windows-only common metadata covers depots without an oslist");
+	CHECK(!AppInfoProvision::requiresProtonMapping(
+	          /*keptDepots=*/1, {}, "windows,linux"),
+	      "common metadata with native Linux support does not force Proton");
+	CHECK(!AppInfoProvision::requiresProtonMapping(
+	          /*keptDepots=*/1, {}, ""),
+	      "unknown platform metadata does not alter synthetic app behavior");
+	CHECK(!AppInfoProvision::requiresProtonMapping(
+	          /*keptDepots=*/0, {}, "windows"),
+	      "an app without usable content is not made installable by Proton alone");
+	CHECK(AppInfoProvision::requiresProtonMapping(
+	          /*keptDepots=*/1, {"linux"}, "windows"),
+	      "app metadata that excludes Linux forces Proton even for a Linux-tagged depot");
+	// Regression: a Windows/macOS-only title whose Windows depot is mis-tagged
+	// "windows,linux" (app 2497920) must still force Proton — common.oslist is
+	// authoritative over the unreliable per-depot union.
+	CHECK(AppInfoProvision::requiresProtonMapping(
+	          /*keptDepots=*/1, {"windows", "linux", "macos"}, "windows,macos"),
+	      "mis-tagged windows,linux depot does not defeat a non-Linux app list");
+	// A genuine native Linux depot with matching app-level support is untouched.
+	CHECK(!AppInfoProvision::requiresProtonMapping(
+	          /*keptDepots=*/1, {"windows", "linux"}, "windows,macos,linux"),
+	      "native Linux depot with app-level Linux support is not forced");
+	// App declares Linux but no surviving depot provides it (linux depot dropped
+	// for a missing key): only non-Linux content installs, so force Proton.
+	CHECK(AppInfoProvision::requiresProtonMapping(
+	          /*keptDepots=*/1, {"windows"}, "windows,macos,linux"),
+	      "app-level Linux without a surviving Linux depot still forces Proton");
+	// Regression: BeamNG.drive (284160) ships its only content depot without an
+	// oslist next to Windows-tagged redistributables; that depot serves Linux.
+	{
+		std::set<std::string> os;
+		AppInfoProvision::addDepotPlatforms(os, "windows");
+		AppInfoProvision::addDepotPlatforms(os, "");
+		CHECK(!AppInfoProvision::requiresProtonMapping(
+		          /*keptDepots=*/3, os, "windows,linux"),
+		      "a depot without an oslist provides the app's native Linux build");
+		CHECK(AppInfoProvision::requiresProtonMapping(
+		          /*keptDepots=*/3, os, "windows"),
+		      "a depot without an oslist does not invent Linux support");
+		// GTA IV (12210): no common.oslist, untagged content beside Windows depots.
+		CHECK(AppInfoProvision::requiresProtonMapping(
+		          /*keptDepots=*/3, os, ""),
+		      "without app-level Linux an untagged depot does not prove native");
+		std::set<std::string> untagged;
+		AppInfoProvision::addDepotPlatforms(untagged, "");
+		CHECK(!AppInfoProvision::requiresProtonMapping(
+		          /*keptDepots=*/1, untagged, ""),
+		      "only untagged depots and no platform metadata keep native behavior");
+	}
+	std::ifstream provisionSource("src/feats/appinfo_provision.cpp");
+	const std::string provisionText(
+		(std::istreambuf_iterator<char>(provisionSource)),
+		std::istreambuf_iterator<char>());
+	CHECK(provisionText.find("requiresProtonMapping(") != std::string::npos &&
+	          provisionText.find("keptContent") != std::string::npos,
+	      "depot pruning uses the platform fallback only for retained content");
+	CHECK(provisionText.find("cachedWireRequiresProton(wire)") !=
+	          std::string::npos,
+	      "startup migrates validated caches created before the platform fix");
+
 	{
 		const auto parsed = AppInfoProvision::parsePendingProtonText(
 		    "  123\n4294967295\n123\t\n");

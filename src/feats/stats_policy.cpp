@@ -23,6 +23,28 @@ void StatsPolicy::observe(Context context, uint32_t app, bool success, const CAp
 	              info->ownsLicense, info->licenseExpired, context.epoch);
 }
 
+bool StatsPolicy::hasNativeLicense(uint32_t app)
+{
+	return state.hasNativeLicense(state.account(), app);
+}
+
+void StatsPolicy::observeNativePackage(uint32_t package, uint32_t app)
+{
+	state.observePackage(package, app);
+}
+
+void StatsPolicy::observeNativePackage(Context expected, uint32_t package,
+                                       uint32_t app)
+{
+	state.observePackage(expected, package, app);
+}
+
+void StatsPolicy::replaceNativePackageApps(
+	Context expected, const std::vector<uint32_t>& apps)
+{
+	state.replacePackageApps(expected, apps);
+}
+
 uint64_t StatsPolicy::localEpoch(uint32_t app, uint32_t id, bool refresh)
 {
 	if (!id || id != state.account() || !g_config.isAddedAppId(app) ||

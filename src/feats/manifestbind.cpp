@@ -10,6 +10,7 @@
 #include "manageddepotfilter.hpp"
 #include "manifestselection.hpp"
 #include "manifeststore.hpp"
+#include "manifestdonor.hpp"
 
 #include "../manifest_index.hpp"
 
@@ -89,8 +90,8 @@ namespace
 	//   +0x08 u64 ManifestGid   +0x10 u64 ManifestSize
 	//   +0x18 u32 DlcAppId   +0x1c u8 Lcs   +0x1d u8 bNotNewTarget
 	//   +0x1e u8 SharedInstall ; stride 0x20.
-	// CUtlVector<DepotEntry>: element base @ +0x00 (m_Memory.m_pMemory),
-	//   count (m_Size) @ +0x0c.
+	// CUtlVector<DepotEntry>: element base @ +0x00 (memory.base),
+	//   count (size) @ +0x0c.
 	constexpr size_t kDepotEntryStride = ManagedDepotFilter::kDepotEntryStride;
 	constexpr size_t kDepotEntryAppIdOff = 0x04;
 	constexpr size_t kDepotEntryGidOff = 0x08;
@@ -253,7 +254,7 @@ namespace
 		return chosenGid;
 	}
 
-	// --- DIAGNOSTIC: install-planner runtime trace (env STEAMTOOLS_PLAN_TRACE) -
+	// --- DIAGNOSTIC: install-planner runtime trace (env SLSSTEAM_PLAN_TRACE) -
 	//
 	// Static analysis could not tie the
 	// depot-list BUILDER (the LumaCore `BuildDepotDependency` equivalent) back
@@ -459,10 +460,8 @@ namespace
 		// runtime) must NOT pull the depot in here: redirectGid would archive
 		// it into the ManifestStore and could redirect an owned depot to a
 		// stale local gid.  The store holds LuaTools depots only.
-		return DepotKey::depotInManifestScope(
-		    appId   && g_config.isAddedAppId(appId),
-		    depotId && g_config.isAddedAppId(depotId),
-		    DepotKey::isManagedDepot(depotId),
+		return DepotKey::manifestInManagedScope(
+		    appId, depotId,
 		    /*depotHasPin=*/g_config.getManifestPin(appId, depotId) != 0);
 	}
 
@@ -506,7 +505,7 @@ namespace
 				if (!manifestOnDisk(dc, depotId, pin)
 				    && !ManifestStore::restoreToDepotcache(depotId, pin))
 				{
-					ManifestFetch::fetchManifestBlobSync(pin, depotId);
+					ManifestFetch::fetchManifestBlobSync(pin, appId, depotId);
 				}
 			}
 			g_pLog->debug("ManifestBind[%s]: depot=%u pin gid=%llu staged "
@@ -569,10 +568,15 @@ namespace
 		// submitManifestBlob is deduplicated, so this also covers paths that
 		// reached the leaf without the builder hook. Wait only for the time
 		// remaining in the plan-wide budget.
-		ManifestFetch::submitManifestBlob(manifestId, appId, depotId);
+		const bool activeRequest =
+			ManifestFetch::isAnyManagedDownloadActive(appId);
+		ManifestFetch::submitManifestBlob(
+			manifestId, appId, depotId, activeRequest);
 		const int waitMs = remainingPlanBudgetMs(depotId, manifestId);
 		const bool fetched = ManifestFetch::awaitManifestBlobFor(
-		    manifestId, depotId, waitMs, /*notifyOnTimeout=*/false);
+		    manifestId, appId, depotId, waitMs,
+		    /*notifyOnTimeout=*/false,
+		    activeRequest);
 		if (fetched && ManifestStore::isInDepotcache(depotId, manifestId))
 		{
 			ManifestStore::markPreferredGid(depotId, manifestId);
@@ -711,7 +715,9 @@ namespace
 						    entryAppId, depotId);
 						if (pin && !ManifestStore::installedSize(depotId, pin))
 						{
-							ManifestFetch::submitManifestBlob(pin, entryAppId, depotId);
+							ManifestFetch::submitManifestBlob(
+							    pin, entryAppId, depotId,
+							    ManifestFetch::isAnyManagedDownloadActive(entryAppId));
 						}
 					}
 				}
@@ -749,6 +755,7 @@ namespace
 
 					const uint32_t entryAppId =
 						*reinterpret_cast<const uint32_t*>(e + kDepotEntryAppIdOff);
+					ManifestDonor::observeDepot(entryAppId, depotId, *gidp);
 					const uint64_t pin = g_config.getManifestPinForPlanner(
 						entryAppId, depotId);
 					if (flag == kTargetPlanFlag && pin)
@@ -767,10 +774,12 @@ namespace
 						    {
 							return ManifestStore::installedSize(depotId, pin);
 						    },
-						    [depotId, pin](int waitMs)
+						    [depotId, pin, entryAppId](int waitMs)
 						    {
 							return ManifestFetch::awaitManifestBlobFor(
-							    pin, depotId, waitMs, /*notifyOnTimeout=*/false);
+							    pin, entryAppId, depotId, waitMs,
+							    /*notifyOnTimeout=*/false,
+							    ManifestFetch::isAnyManagedDownloadActive(entryAppId));
 						    });
 						if (resolved.pinned)
 						{
@@ -808,7 +817,8 @@ namespace
 					// managed by the current discovery pass.
 					const uint64_t targetGid = *gidp;
 					if (targetGid
-					    && (DepotKey::isManagedDepot(depotId) || pin))
+					    && DepotKey::manifestInManagedScope(
+					        entryAppId, depotId, pin != 0, dlcAppId))
 					{
 						registerPlanTarget(depotId, targetGid, planDeadline);
 						if (planDepotcache.empty()
@@ -816,7 +826,8 @@ namespace
 						        planDepotcache, depotId, targetGid))
 						{
 							ManifestFetch::submitManifestBlob(
-							    targetGid, entryAppId, depotId);
+							    targetGid, entryAppId, depotId,
+							    ManifestFetch::isAnyManagedDownloadActive(entryAppId));
 						}
 					}
 
@@ -913,12 +924,12 @@ namespace ManifestBind
 {
 	bool setup()
 	{
-		if (const char* env = std::getenv("STEAMTOOLS_MANIFEST_FALLBACK"))
+		if (const char* env = std::getenv("SLSSTEAM_MANIFEST_FALLBACK"))
 		{
 			g_fallbackEnabled = !(env[0] == '0' && env[1] == '\0');
 		}
 
-		if (const char* env = std::getenv("STEAMTOOLS_PLAN_TRACE"))
+		if (const char* env = std::getenv("SLSSTEAM_PLAN_TRACE"))
 		{
 			g_planTrace = !(env[0] == '0' && env[1] == '\0');
 		}

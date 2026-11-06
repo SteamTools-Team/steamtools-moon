@@ -36,7 +36,7 @@ namespace detail
 
 inline std::string backupPath(const std::string& path)
 {
-	return path + ".steamtools-pair-backup";
+	return path + ".slssteam-pair-backup";
 }
 
 // Copy the current member aside so a later failure can restore it byte for

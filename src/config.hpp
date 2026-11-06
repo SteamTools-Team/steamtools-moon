@@ -2,6 +2,7 @@
 
 #include "mtvar.hpp"
 #include "log.hpp"
+#include "sdk/steam.hpp"
 #include "feats/manifestpins.hpp"
 #include "feats/librarydates.hpp"
 
@@ -23,6 +24,14 @@ class CFileWatcher;
 
 class CConfig {
 public:
+	typedef unsigned int SmartTicketsFlags;
+
+	enum ESmartTickets : SmartTicketsFlags
+	{
+		k_ESmartTicketsSteamDRM = 1 << 0,
+		k_ESmartTicketsDenuvo = 1 << 1,
+	};
+
 	struct FakeGame_t
 	{
 		uint32_t appId = 0;
@@ -36,6 +45,17 @@ public:
 		std::unordered_map<uint32_t, std::string> dlcIds;
 		//No default constructor, otherwise dlcData will complain that no matching one was found
 		//without implementing it ourself anyway
+	};
+
+	struct DonateSettings
+	{
+		bool enabled = true;
+		std::string url = "https://manifest.luastools.xyz";
+		uint32_t intervalSecs = 30;
+		uint32_t wantedRefreshSecs = 300;
+		uint32_t maxMintsPerCycle = 25;
+		uint32_t minMintIntervalMs = 2000;
+		uint32_t maxMintsPerSession = 0;
 	};
 
 	static std::vector<std::uint32_t> selectConfiguredDlcIds(
@@ -71,6 +91,10 @@ public:
 	// Managed apps plus installed compatibility entries used by ownership and
 	// package hooks. Compatibility entries never enter the provider chain.
 	MTVariable<std::unordered_set<uint32_t>> addedAppIds;
+	// Last observed on-disk installed set (appmanifest + content). Baseline for
+	// recovering a racy steamapps walk that transiently drops a still-installed
+	// compatibility app, so a scan artifact is not mistaken for an uninstall.
+	MTVariable<std::unordered_set<uint32_t>> installedAppIds;
 	MTVariable<std::unordered_map<uint32_t, CDlcData>> dlcData;
 	MTVariable<std::unordered_map<uint32_t, uint64_t>> appTokens;
 	MTVariable<std::unordered_set<uint32_t>> fakeOffline;
@@ -89,18 +113,26 @@ public:
 	MTVariable<ManifestPins::PinMap> manifestPinsByApp;
 
 	MTVariable<std::unordered_map<uint32_t, std::unordered_set<uint32_t>>> denuvoGames;
+	MTVariable<std::unordered_map<AppId_t, uint64_t>> steamIdOverride;
 
 	MTVariable<bool> disableFamilyLock;
 	MTVariable<bool> disableParentalRestrictions;
 	MTVariable<bool> useWhiteList;
 	MTVariable<bool> automaticFilter;
 	MTVariable<bool> playNotOwnedGames;
+	MTVariable<SmartTicketsFlags> smartTickets;
 	MTVariable<bool> safeMode;
 	MTVariable<bool> notifications;
 	MTVariable<bool> warnHashMissmatch;
 	MTVariable<bool> notifyInit;
 	MTVariable<bool> api;
 	MTVariable<bool> disableCloud;
+	// When off, fully-installed managed apps that are NOT individually pinned
+	// freeze on their installed build instead of tracking the latest public
+	// gid (mirrors LuaTools' "Auto Update Apps"). Per-app pins are unaffected.
+	// Default on.
+	MTVariable<bool> autoUpdateApps;
+	MTVariable<DonateSettings> donate;
 	// Restore the pre-Phase-3 behavior of injecting every advertised DLC
 	// into package 0. Default false keeps storefront-only DLC out of CM
 	// ownership traffic unless it has content of its own.

@@ -27,7 +27,7 @@
 // never trips the changelist SHA-1 integrity check that makes splicing
 // appinfo.vdf non-viable.
 //
-// Gated on STEAMTOOLS_MANIFEST_FALLBACK (default on; "0" disables).  Conceptual
+// Gated on SLSSTEAM_MANIFEST_FALLBACK (default on; "0" disables).  Conceptual
 // sibling of OpenSteamTool / LumaCore manifest pinning, adapted for Linux
 // i386 and used as a conditional fallback rather than an unconditional pin.
 

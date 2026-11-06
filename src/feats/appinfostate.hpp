@@ -539,8 +539,8 @@ inline void* guard(
 		case AppInfoStatePolicy::Action::SignalResolved:
 			read.noteResolved();
 			break;
-		case AppInfoStatePolicy::Action::MarkSkipAndSignalResolved:
-			static_cast<std::uint8_t*>(data)[layout.skipOffset] = 1;
+		case AppInfoStatePolicy::Action::ClearSkipAndSignalResolved:
+			static_cast<std::uint8_t*>(data)[layout.skipOffset] = 0;
 			read.noteResolved();
 			break;
 		case AppInfoStatePolicy::Action::None:
@@ -571,6 +571,7 @@ bool takeResolvedDirty() noexcept;
 
 void publishAuthoritative(
 	const std::unordered_set<std::uint32_t>& appIds) noexcept;
+bool isAuthoritative(std::uint32_t appId) noexcept;
 
 // Re-read Steam's appinfo.vdf through the captured CAppInfoCache instance and
 // signal managed apps whose CAppData now carries a real SHA.  This is called

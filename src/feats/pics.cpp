@@ -2,6 +2,7 @@
 #include "pics.hpp"
 
 #include "appinfo_provision.hpp"
+#include "appinfostate.hpp"
 #include "provision_cache.hpp"
 #include "appinfo_vdf.hpp"
 #include "depotkey.hpp"
@@ -27,6 +28,7 @@
 #include "yaml-cpp/emitter.h"
 #include "yaml-cpp/yaml.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
@@ -456,7 +458,7 @@ void recvProductInfoResponse(CMsgClientPICSProductInfoResponse* resp)
 	);
 
 	const bool legacyStaging = legacyManifestStagingEnabled(
-	    std::getenv("STEAMTOOLS_LEGACY_MANIFEST_STAGING"));
+	    std::getenv("SLSSTEAM_LEGACY_MANIFEST_STAGING"));
 	g_pLog->infoOnce(
 	    "PICS: manifest staging mode=%s\n",
 	    legacyStaging ? "legacy synchronous + prewarm"
@@ -580,7 +582,9 @@ void recvProductInfoResponse(CMsgClientPICSProductInfoResponse* resp)
 				// Only prefetch depots WE manage (LuaTools).  An owned
 				// library app's depots are Steam's job — touching them here
 				// is needless wudrm traffic for content we don't manage.
-				if (!DepotKey::isManagedDepot(depotId))
+				if (!DepotKey::manifestInManagedScope(
+				        app->appid(), depotId,
+				        g_config.getManifestPin(app->appid(), depotId) != 0))
 				{
 					continue;
 				}
@@ -595,6 +599,20 @@ void recvProductInfoResponse(CMsgClientPICSProductInfoResponse* resp)
 		// key filter (we only stage depots we hold a key for — staging a
 		// blob we can't decrypt just wastes a CDN round-trip) is applied
 		// there, in buildSyncStagePlan.
+		//
+		// Narrowed to lua-PINNED depots: the gids mined here come from the
+		// provisioned appinfo buffer, which is NOT the gid Steam ends up
+		// requesting for a non-pinned depot, so synchronously fetching on it
+		// is a guess (a 404 or a manifest Steam never reads).  A setManifestid
+		// pin is the only thing that states the gid the download will use.
+		// Every other managed depot is covered on demand by the
+		// ProcessDepotManifest leaf hook (feats/manifestbind.cpp), which fires
+		// with the gid Steam states outright — so it needs no speculative
+		// synchronous pre-seed here.
+		std::erase_if(depots, [&](const DepotGid& depot)
+		{
+			return g_config.getManifestPin(app->appid(), depot.first) == 0;
+		});
 		toStage.push_back({app->appid(), std::move(depots)});
 	}
 
@@ -672,7 +690,7 @@ void recvProductInfoResponse(CMsgClientPICSProductInfoResponse* resp)
 		for (const auto& t : pending)
 		{
 			const bool staged = ManifestFetch::awaitManifestBlob(
-			    t.gid, t.depotId, ManifestFetch::getTimeoutSec());
+			    t.gid, t.appId, t.depotId, ManifestFetch::getTimeoutSec());
 			if (staged)
 			{
 				ManifestStore::archiveManifest(t.depotId, t.gid);
@@ -752,7 +770,7 @@ void recvChangesSinceResponse(CMsgClientPICSChangesSinceResponse* resp)
 
 	const auto managed = g_config.managedAppIds.get();
 	std::vector<AppInfoProvision::ObservedAppState> managedChanges;
-	std::unordered_set<uint32_t> suppressedSyntheticApps;
+	std::unordered_set<uint32_t> suppressedManagedApps;
 	managedChanges.reserve(static_cast<std::size_t>(resp->app_changes_size()));
 	for (int i = 0; i < resp->app_changes_size(); ++i)
 	{
@@ -774,13 +792,14 @@ void recvChangesSinceResponse(CMsgClientPICSChangesSinceResponse* resp)
 	for (int i = resp->app_changes_size() - 1; i >= 0; --i)
 	{
 		const uint32_t appId = resp->app_changes(i).appid();
-		// Unmanaged changelist rows can never carry one of our synthetic pairs.
-		// Avoid publication-lock and marker/metadata I/O for Steam's library.
-		if (managed.count(appId) != 0 &&
-			AppInfoProvision::isSynthesizedApp(appId))
+		// A retained synthetic compatibility row can be authoritative without
+		// remaining provider-managed. The published store keeps this callback
+		// free of cache I/O; only managed rows are queued for provider refresh.
+		if (AppInfoState::isAuthoritative(appId))
 		{
-			suppressedSyntheticApps.insert(appId);
-			g_pLog->debug("PICS: stripping synthetic app %u from changelist\n",
+			if (managed.count(appId) != 0)
+				suppressedManagedApps.insert(appId);
+			g_pLog->debug("PICS: stripping locally authoritative app %u from changelist\n",
 			              appId);
 			resp->mutable_app_changes()->DeleteSubrange(i, 1);
 			++stripped;
@@ -788,15 +807,15 @@ void recvChangesSinceResponse(CMsgClientPICSChangesSinceResponse* resp)
 	}
 	if (stripped > 0)
 	{
-		g_pLog->info("PICS: filtered %d synthetic app(s) from changelist (%d remaining)\n",
+		g_pLog->info("PICS: filtered %d locally authoritative app(s) from changelist (%d remaining)\n",
 		             stripped, resp->app_changes_size());
 	}
 
 	std::vector<AppInfoProvision::RefreshRequest> refreshRequests;
 	if (resp->force_full_app_update())
 	{
-		refreshRequests.reserve(suppressedSyntheticApps.size());
-		for (const uint32_t appId : suppressedSyntheticApps)
+		refreshRequests.reserve(suppressedManagedApps.size());
+		for (const uint32_t appId : suppressedManagedApps)
 		{
 			const auto publication =
 				AppInfoProvision::snapshotCachePublication(appId);
@@ -812,7 +831,7 @@ void recvChangesSinceResponse(CMsgClientPICSChangesSinceResponse* resp)
 		refreshRequests = markRuntimePublicationForSuppressedApps(
 			AppInfoProvision::selectRefreshRequests(
 				managedChanges, AppInfoProvision::RefreshReason::PicsChanges).requests,
-			suppressedSyntheticApps);
+			suppressedManagedApps);
 	}
 	auto startupCacheRepairs = HotReload::takeMissingCacheRepairRequests();
 	refreshRequests.insert(

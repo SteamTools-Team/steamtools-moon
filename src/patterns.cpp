@@ -44,7 +44,7 @@ namespace
 	bool localCacheEnabled()
 	{
 		return PatternCache::enabled(
-			g_config.patternCache.get(), std::getenv("STEAMTOOLS_PATTERN_CACHE")
+			g_config.patternCache.get(), std::getenv("SLSSTEAM_PATTERN_CACHE")
 		);
 	}
 
@@ -542,7 +542,7 @@ namespace
 Pattern_t::Pattern_t(const char* name, const char* pattern,
 	MemHlp::SigFollowMode followMode, lm_module_t* module, const char* symbol)
 	:
-	Pattern_t(name, pattern, followMode, std::vector<uint8_t>(), module, symbol)
+	Pattern_t(name, pattern, followMode, std::vector<int16_t>(), module, symbol)
 {
 }
 
@@ -554,7 +554,21 @@ Pattern_t::Pattern_t(const char* name, const char* pattern,
 	symbol(symbol != nullptr ? symbol : std::string("Patterns::") + name),
 	pattern(pattern),
 	followMode(followMode),
-	prologue(prologue),
+	prologue(prologue.begin(), prologue.end()),
+	module(module)
+{
+	Patterns::patterns().emplace_back(this);
+}
+
+Pattern_t::Pattern_t(const char* name, const char* pattern,
+	MemHlp::SigFollowMode followMode, std::vector<int16_t> prologue,
+	lm_module_t* module, const char* symbol)
+	:
+	name(name),
+	symbol(symbol != nullptr ? symbol : std::string("Patterns::") + name),
+	pattern(pattern),
+	followMode(followMode),
+	prologue(std::move(prologue)),
 	module(module)
 {
 	Patterns::patterns().emplace_back(this);
@@ -719,32 +733,53 @@ static void autoResolveIpcFrameRoots()
 		const uint32_t seed = IpcFrame::parseTrailingRoot(p->pattern);
 		size_t idx = IpcFrame::resolveConfident(ctx.cands, seed, IpcFrame::kMaxRootDrift);
 
-		// The 2026-08-05 RemoteStorage tree kept its internal comparisons but
-		// drifted every message id (median/root moved ~9, siblings ~3-8) and
-		// selected a numerically distant median/root. Match three independent
-		// pivots chosen mid-way between the 2026-07-21 and 2026-08-05 values so a
-		// single bounded literal set still resolves both builds; never widen the
-		// global numeric band and risk assigning an unrelated interface.
-		if (idx == SIZE_MAX && p == &Patterns::IClientRemoteStorage::RunIPCFrame)
+		// Guarded structural fallback for an interface whose dispatch median
+		// jumped beyond kMaxRootDrift.  RemoteStorage did this earlier; a later
+		// beta made UserStats do it too (root 0x876D658x -> 0x85E5D66B, ~1.9M
+		// away, so the nearest-root band cannot reach it).  Each such interface
+		// is identified by a set of high-24-bit cmp-id pivots: the top three
+		// bytes of several of its dispatch ids stay stable across builds even
+		// when the low byte and the median drift.  Require >= minMatches pivots
+		// present in EXACTLY ONE candidate; none or more than one keeps the
+		// embedded root (find() then fails loud rather than mis-hooking).
+		const auto resolveByPivots =
+			[&](const uint32_t* pivots, size_t count, size_t minMatches) -> size_t
 		{
-			static constexpr uint32_t fingerprint[] =
-			{
-				0x5DB47296, 0x7F3F564A, 0x84692E73,
-			};
-			size_t matches = 0;
+			size_t hit = SIZE_MAX;
+			size_t qualifying = 0;
 			for (size_t i = 0; i < ctx.cands.size(); ++i)
 			{
 				const auto& cand = ctx.cands[i];
-				if (IpcFrame::matchesCmpFingerprint(
+				if (IpcFrame::countHighPivots(
 					reinterpret_cast<const uint8_t*>(cand.offset), cand.available,
-					fingerprint, std::size(fingerprint), 4))
+					pivots, count) >= minMatches)
 				{
-					idx = i;
-					++matches;
+					hit = i;
+					++qualifying;
 				}
 			}
-			if (matches != 1)
-				idx = SIZE_MAX;
+			return (qualifying == 1) ? hit : SIZE_MAX;
+		};
+
+		if (idx == SIZE_MAX && p == &Patterns::IClientRemoteStorage::RunIPCFrame)
+		{
+			static constexpr uint32_t remoteStoragePivots[] =
+			{
+				0x396376, 0x5DB472, 0x84692E, 0x8694E9, 0x8712DD,
+				0xC0F5C7, 0xDB2410, 0xE82BD7, 0xF5841E, 0xFD3CA9,
+			};
+			idx = resolveByPivots(
+				remoteStoragePivots, std::size(remoteStoragePivots), 4);
+		}
+		if (idx == SIZE_MAX && p == &Patterns::IClientUserStats::RunIPCFrame)
+		{
+			static constexpr uint32_t userStatsPivots[] =
+			{
+				0x84EDDC, 0x85DE33, 0x85E5D6, 0xF7452C,
+				0xF991AC, 0xF9B9E3, 0xFF7DFB, 0xFF94F2,
+			};
+			idx = resolveByPivots(
+				userStatsPivots, std::size(userStatsPivots), 4);
 		}
 		if (idx == SIZE_MAX)
 		{
@@ -757,11 +792,13 @@ static void autoResolveIpcFrameRoots()
 		const uint32_t found = ctx.cands[idx].root;
 		if (found != seed)
 		{
-			g_pLog->warn
-			(
-				"IpcFrame: %s root drifted 0x%08X -> 0x%08X; auto-resolved\n",
-				p->name.c_str(), seed, found
-			);
+			// Auto-resolving root drift is the designed steady state on new
+			// client builds, not a problem — keep it out of the normal log and
+			// surface it only when ExtendedLogging is explicitly enabled.
+			if (g_config.extendedLogging.get())
+				g_pLog->debug(
+					"IpcFrame: %s root drifted 0x%08X -> 0x%08X; auto-resolved\n",
+					p->name.c_str(), seed, found);
 			IpcFrame::setTrailingRoot(p->pattern, found);
 		}
 	}
@@ -775,10 +812,23 @@ bool Patterns::init()
 	// Establish immutable compiled policy before reading any remote-derived
 	// metadata.  A catalog whose required flags or symbols disagree with this
 	// registry is rejected in full.
+
+	// CAPIJob::GetPlayerStats is a pure observation hook: hkCAPIJob_GetPlayerStats
+	// calls the original and emits a debug line, returning the result unchanged
+	// (it modifies nothing).  It was previously required, so a client that
+	// restructured this function aborted the ENTIRE injection and left Steam
+	// unmodified.  A later beta rewrote the function body (prologue, member
+	// layout and control flow all changed), which is exactly that failure.
+	// Reclassify it optional to match every other observational hook here: its
+	// absence is a genuine safe no-op (only the debug log is lost), so a drift
+	// disables just this log instead of every hook.
+	CAPIJob::GetPlayerStats.optional = true;
+
 	CUser::MarkLicenseAsChanged.optional = true;
 	CUser::ProcessPendingLicenseUpdates.optional = true;
 	CUser::NotifyLicensesUpdated.optional = true;
 	CUser::Offset_CompatManager.optional = true;
+	CCMInterface::RecvPkt.optional = true;
 	CAppInfoCache::GetOrAddAppData.optional = true;
 	CAppInfoCache::ThreadedReadFromDisk.optional = true;
 	CAppInfoCache::SkipFlagReference.optional = true;
@@ -842,10 +892,14 @@ using SigFollowMode = MemHlp::SigFollowMode;
 
 namespace Patterns
 {
+	// Parental::setup flips the jne at +2.  The failure path pushes a member
+	// for its log line (`push [eax+disp32]`, 0x182 -> 0x166 on the 2026-10
+	// client); it is location-only, so its low bytes are masked.  The jne
+	// distance (0x27) keeps the sibling check (jne 0x63) out: one match.
 	Pattern_t ParentalSignatureCheck
 	{
 		"ParentalSignatureCheck",
-		"84 C0 75 27 8B 85 ? ? ? ? 8D 9D ? ? ? ? 83 EC 04 FF B0 82 01 00 00 8D 86 ? ? ? ? 50 53 E8 ? ? ? ?",
+		"84 C0 75 27 8B 85 ? ? ? ? 8D 9D ? ? ? ? 83 EC 04 FF B0 ? ? 00 00 8D 86 ? ? ? ? 50 53 E8 ? ? ? ?",
 		SigFollowMode::None
 	};
 	Pattern_t ParentalSettingsReceived
@@ -884,7 +938,11 @@ namespace Patterns
 		Pattern_t GetAppByID
 		{
 			"CSteamUIAppController::GetAppByID",
-			"E8 ? ? ? ? 05 ? ? ? ? 55 89 E5 57 56 53 83 EC 4C 8B 5D 10 8B 75 08 89 45 C8 8B 80 E0 09 00 00",
+			// The trailing `mov eax,[eax+disp32]` reads a controller member near
+			// 0x9E0 that a later client moved (~0xC38); it is location-only for
+			// this locator, so both low displacement bytes are masked while the
+			// high bytes stay 00 00 and the prologue keeps one steamui match.
+			"E8 ? ? ? ? 05 ? ? ? ? 55 89 E5 57 56 53 83 EC 4C 8B 5D 10 8B 75 08 89 45 C8 8B 80 ? ? 00 00",
 			SigFollowMode::None,
 			&g_modSteamUI,
 			"Patterns::SteamUI::GetAppByID"
@@ -894,7 +952,10 @@ namespace Patterns
 		Pattern_t MarkAppChange
 		{
 			"CUpdateManager::MarkAppChange",
-			"E8 ? ? ? ? 05 ? ? ? ? 55 89 E5 57 56 53 83 EC 3C 8B 75 0C 8B 5D 10 89 45 D4 8B 80 E0 09 00 00",
+			// Same controller member load as GetAppByID (near 0x9E0 -> ~0xC38 on
+			// a later client); location-only, so mask its low displacement bytes
+			// (high bytes stay 00 00) while the distinct frame keeps one match.
+			"E8 ? ? ? ? 05 ? ? ? ? 55 89 E5 57 56 53 83 EC 3C 8B 75 0C 8B 5D 10 89 45 D4 8B 80 ? ? 00 00",
 			SigFollowMode::None,
 			&g_modSteamUI,
 			"Patterns::SteamUI::MarkAppChange"
@@ -939,11 +1000,35 @@ namespace Patterns
 
 	namespace CAPIJob
 	{
+		// Direct cdecl entry of the CAPIJobRequestUserStats job body (the
+		// function carrying "Player.GetUserStats#1"; one caller passes the
+		// job as its only argument).  This was a call-site + Relative follow,
+		// but the 2026-10 client rewrote that caller.  The entry is the same
+		// function: PIC-thunk prologue, `this` from [ebp+8], stack cookie.  The
+		// frame size and frame-relative spills are masked; one .text match.
 		Pattern_t GetPlayerStats
 		{
 			"CAPIJob::GetPlayerStats",
-			"E8 ? ? ? ? 83 C4 10 89 C5 E9 ? ? ? ? ? ? 80 BE ? ? ? ? 00",
-			SigFollowMode::Relative
+			"55 89 E5 57 E8 ? ? ? ? 81 C7 ? ? ? ? 56 53 81 EC ? ? 00 00 8B 75 08 89 B5 ? ? FF FF 89 FB 65 A1 14 00 00 00 89 45 E4 31 C0 8D 85 ? ? FF FF 6A 00 50",
+			SigFollowMode::None
+		};
+	}
+
+	namespace CCMInterface
+	{
+		Pattern_t RecvPkt
+		{
+			"CCMInterface::RecvPkt",
+			// The stack frame grew on a later beta (sub esp,0x4cc -> larger), so
+			// the frame size and the frame-relative [ebp-disp] spill of the saved
+			// argument both drift together.  Both are local-frame layout, not
+			// values the hook reads, so mask the frame immediate and the spill
+			// displacement (their high bytes 00 00 / FF FF are kept); the gs
+			// cookie load and the rest keep exactly one .text match.
+			"55 89 E5 57 56 E8 ? ? ? ? 81 C6 ? ? ? ? 53 81 EC ? ? 00 00 8B 45 08 8B 7D 0C 89 85 ? ? FF FF 65 A1 14 00 00 00 89 45 E4 31 C0 8B 86",
+			SigFollowMode::None,
+			nullptr,
+			"Patterns::CCMInterface::RecvPkt"
 		};
 	}
 
@@ -965,6 +1050,15 @@ namespace Patterns
 
 	namespace CSteamEngine
 	{
+		Pattern_t GetServerPipe
+		{
+			"CSteamEngine::GetServerPipe",
+			"0F B7 CA 31 C0 3B 4B",
+			SigFollowMode::PrologueUpwards,
+			std::vector<int16_t> { 0x53, 0x56, 0x57 },
+			nullptr,
+			"Patterns::CSteamEngine::GetServerPipe"
+		};
 		Pattern_t Init
 		{
 			"CSteamEngine::Init",
@@ -976,6 +1070,23 @@ namespace Patterns
 			"CSteamEngine::SetAppIdForCurrentPipe",
 			"E8 ? ? ? ? E9 ? ? ? ? ? ? ? ? ? 8B 85 ? ? ? ? 83 EC 08 FF B5",
 			SigFollowMode::Relative
+		};
+		Pattern_t ProcessIPCFrame
+		{
+			"CSteamEngine::ProcessIPCFrame",
+			"5E C3 FF 74 24",
+			SigFollowMode::PrologueUpwards,
+			std::vector<int16_t> { 0xC3, 0x81, -1, -1, -1, -1, 0xE8, 0x53, 0x56 },
+			nullptr,
+			"Patterns::CSteamEngine::ProcessIPCFrame"
+		};
+		Pattern_t Offset_ClientUtils
+		{
+			"CSteamEngine::m_ClientUtils",
+			"89 86 ? ? ? ? 8D 86 ? ? ? ? 89 44 24 ? 50 E8 ? ? ? ? 83 C4",
+			SigFollowMode::None,
+			nullptr,
+			"Patterns::CSteamEngine::Offset_ClientUtils"
 		};
 		Pattern_t Offset_User
 		{
@@ -1010,11 +1121,14 @@ namespace Patterns
 		// CCompatManager is an embedded member of the local CUser. Locate the
 		// constructor call and retain the LEA so CSteamEngine can decode its
 		// displacement instead of pinning a build-specific class offset.
+		// 2026-10 client: `lea ecx,[esi+disp32]; pop; push esi; push ecx;
+		// spill; call ctor` (was `lea ebx` + `mov ebx,edi`).  Only this form is
+		// decoded, because the same update reordered IClientCompat's vtable
+		// (see VFTIndexes::IClientCompat).
 		Pattern_t Offset_CompatManager
 		{
 			"CUser::m_CompatManager",
-			"8D 9E ? ? ? ? 89 9D ? ? ? ? 53 89 FB E8 ? ? ? ? 58 5A "
-			"C7 86 ? ? ? ? FF FF FF FF",
+			"8D 8E ? ? ? ? 58 56 51 89 8D ? ? ? ? E8 ? ? ? ? 58 5A C7 86 ? ? ? ? FF FF FF FF",
 			SigFollowMode::None,
 			nullptr,
 			"Patterns::CUser::Offset_CompatManager"
@@ -1025,11 +1139,21 @@ namespace Patterns
 			"E8 ? ? ? ? 88 45 ? 83 C4 10 84 C0 0F 84 ? ? ? ? 8B 45 ? 80 7D ? 00",
 			SigFollowMode::Relative
 		};
+		// Direct cdecl entry.  This was a call-site + Relative follow, but the
+		// caller restructured on a later client (the je flipped to a jne with a
+		// different body), so the call-site form drifted to zero matches.  The
+		// entry itself is stable across builds: the PIC-thunk prologue, then the
+		// (appList, size, flags) frame — movzx eax,[ebp+0x14], two null pushes,
+		// the [ebp-0x71] byte save, and the movdqa scratch init.  The two movdqa
+		// displacements are PIC-relative to a data symbol (location-only) and are
+		// masked; the whole form still has exactly one .text match on every
+		// inspected build.  The resolved target is the function entry either way,
+		// so moving from Relative to None does not change the hook placement.
 		Pattern_t GetSubscribedApps
 		{
 			"CUser::GetSubscribedApps",
-			"E8 ? ? ? ? 89 C6 83 C4 10 85 C0 0F 84 ? ? ? ? 8B 9D ? ? ? ? 39 D8",
-			SigFollowMode::Relative
+			"55 89 E5 57 56 E8 ? ? ? ? 81 C6 ? ? ? ? 53 83 C4 80 0F B6 45 14 6A 00 6A 00 88 45 8F 8D 45 D0 66 0F 6F 86 ? ? ? ? 50 89 45 80 0F 11 45 BC 66 0F 6F 86 ? ? ? ? 89 75 94 0F 29 45 A8",
+			SigFollowMode::None
 		};
 		Pattern_t PostCallback
 		{
@@ -1079,10 +1203,14 @@ namespace Patterns
 			// on an unrelated client change (0x3B314 -> 0x3B714 between the
 			// 2026-08-03 and 2026-08-16 builds).  Nothing here reads it -- the
 			// hook only calls the resolved entry -- so it is location-only and
-			// stays wildcarded.  The member offsets loaded above (0x1C7C count,
-			// 0x1C70 array base) ARE consumed by the function and remain pinned
-			// as identity; the whole relaxed form still has one module match.
-			"55 57 56 53 E8 ? ? ? ? 81 C3 ? ? ? ? 83 EC 2C 8B 44 24 40 8B 88 7C 1C 00 00 85 C9 0F 8E ? ? ? ? 05 70 1C 00 00 89 44 24 18 8D 83 ? ? ? ? 8B 30",
+			// stays wildcarded.  The two CUser member offsets loaded above
+			// (count near 0x1C7C, array base near 0x1C70) drifted by 4 on a
+			// later beta (0x1C7C->0x1C78, 0x1C70->0x1C6C), the same 4-byte layout
+			// shift seen on other members; the hook calls the resolved entry and
+			// never reads these values, so only their low byte is masked (the
+			// 0x1C high byte stays pinned) -- the relaxed form keeps one module
+			// match while self-healing across that layout drift.
+			"55 57 56 53 E8 ? ? ? ? 81 C3 ? ? ? ? 83 EC 2C 8B 44 24 40 8B 88 ? 1C 00 00 85 C9 0F 8E ? ? ? ? 05 ? 1C 00 00 89 44 24 18 8D 83 ? ? ? ? 8B 30",
 			SigFollowMode::None
 		};
 		// CUser::<broadcast LicensesUpdated_t>(CUser* this)
@@ -1113,12 +1241,21 @@ namespace Patterns
 		// only needs to LOCATE this function (it invokes it by pointer with
 		// g_pLocalUser as `this`); the offset value itself is internal to the
 		// function, so wildcarding it makes the signature self-heal across that
-		// class of layout drift while staying unique.  Verified: exactly 1
-		// match in both the pre- and post-2026-06-23 steamclient.so.
+		// class of layout drift while staying unique.
+		//
+		// A later beta drifted this further: the field load changed BOTH the
+		// destination register and the offset (mov edi,[eax+0x1b14] -> mov
+		// esi,[eax+0x1b10]), which also flipped the following `test edi,edi` to
+		// `test esi,esi`.  Both the modrm byte and the test are register-choice
+		// noise the hook never reads, so mask them (`8B ? ? 1B 00 00`, `85 ?`).
+		// To stay unique with the looser field load the signature now extends
+		// down to this function's defining act: rebuilding LicensesUpdated_t and
+		// posting callback id 0x7d (`... 83 EC 08 6A 7D 50` = sub esp,8; push
+		// 0x7d; push eax).  Verified: exactly 1 match on every inspected build.
 		Pattern_t NotifyLicensesUpdated
 		{
 			"CUser::NotifyLicensesUpdated",
-			"55 89 E5 57 56 53 E8 ? ? ? ? 81 C3 ? ? ? ? 81 EC ? ? ? ? 8B 45 08 8B B8 ? ? 00 00 89 9D ? ? FF FF 85 FF",
+			"55 89 E5 57 56 53 E8 ? ? ? ? 81 C3 ? ? ? ? 81 EC BC 01 00 00 8B 45 08 8B ? ? 1B 00 00 89 9D 54 FE FF FF 85 ? 0F 8E ? ? ? ? 8D 83 ? ? ? ? 83 EC 08 6A 7D 50",
 			SigFollowMode::None
 		};
 	}
@@ -1131,11 +1268,15 @@ namespace Patterns
 		// node is consumed as CAppData by ProcessPendingLicenseUpdates.  The
 		// direct PIC-thunk prologue is the trampoline entry; one full match.
 		// The separate 0x00FD4070 regparm helper is a lookup path, not this
-		// cdecl GetOrAddAppData target.
+		// cdecl GetOrAddAppData target.  The `mov eax,[eax+disp32]` right after
+		// the frame reads a PIC-relative global slot (near 0x8BC) that a later
+		// beta relocated to ~0xA90; the slot address is location-only, so both
+		// low displacement bytes are masked (high bytes stay 00 00) and the
+		// prologue keeps one .text match.
 		Pattern_t GetOrAddAppData
 		{
 			"CAppInfoCache::GetOrAddAppData",
-			"E8 ? ? ? ? 05 ? ? ? ? 55 89 E5 57 56 53 83 EC 2C 8B 75 0C 8B 7D 10 89 45 D0 8B 80 BC 08 00 00 8B 00 85 C0 0F 85 ? ? ? ?",
+			"E8 ? ? ? ? 05 ? ? ? ? 55 89 E5 57 56 53 83 EC 2C 8B 75 0C 8B 7D 10 89 45 D0 8B 80 ? ? 00 00 8B 00 85 C0 0F 85 ? ? ? ?",
 			SigFollowMode::None
 		};
 		// CAppInfoCache::ThreadedReadFromDisk is Steam's own background cache
@@ -1206,7 +1347,12 @@ namespace Patterns
 		Pattern_t RunIPCFrame
 		{
 			"IClientRemoteStorage::RunIPCFrame",
-			"E8 ? ? ? ? 8B 85 ? ? ? ? 83 C4 10 3D 6C E8 2F 87",
+			// Seed root refreshed to a current dispatch median (0x8712DD65) so
+			// the nearest-root fast path resolves directly on recent builds; the
+			// stale 0x872FE86C only ever resolved via the pivot fallback.  The
+			// high-24 pivot fingerprint (autoResolveIpcFrameRoots) remains as the
+			// safety net for a future median jump.
+			"E8 ? ? ? ? 8B 85 ? ? ? ? 83 C4 10 3D 65 DD 12 87",
 			SigFollowMode::PrologueUpwards,
 			std::vector<uint8_t> { 0x56, 0x57, 0xe5, 0x89, 0x55 }
 		};
@@ -1241,14 +1387,6 @@ namespace Patterns
 			"83 EC 24 FF 74 24 ? 8B 44 24",
 			SigFollowMode::PrologueUpwards,
 			std::vector<uint8_t> { 0x53, 0x56, 0x57, 0x55 }
-		};
-		Pattern_t GetSteamId
-		{
-			"IClientUser::GetSteamID",
-			"E8 ? ? ? ? 89 D8 83 C4 0C 83 C4 08 5B C2 04 00 ? 83 EC 08 50 53 FF D2 89 D8 83 C4 0C 83 C4 08 5B C2 04 00",
-			SigFollowMode::Relative,
-			nullptr,
-			"Patterns::IClientUser::GetSteamId"
 		};
 		Pattern_t IsUserSubscribedAppInTicket
 		{
@@ -1370,10 +1508,16 @@ namespace Patterns
 		//     fixPICThunkCall repairs the relocated thunk in the tramp.
 		//     Verified: 1 match in .text (entry VA 0x11413e0 on build
 		//     cfe99f0cc8fee644e2a8e3d1a0794e49).
+		//     The 2026-10 client (1791918634) shrank the frame 0x48c -> 0x43c
+		//     and reassigned the argument registers; it now copies the vector
+		//     before planning, after this hook has filtered it.  Same callers
+		//     (four flag-0/flag-1 pairs), same ABI and DepotEntry layout.  The
+		//     neighbouring yielding variant kept the old 0x48c frame and is
+		//     NOT this function.  One match at entry VA 0x132bb60.
 		Pattern_t BuildDepotDependency
 		{
 			"CDepotDownloadMgr::BuildDepotDependency",
-			"E8 ? ? ? ? 05 ? ? ? ? 55 89 E5 57 56 53 81 EC 8C 04 00 00 8B 55 10 8B 7D 0C 89 85 A0 FB FF FF 8B 45 08",
+			"E8 ? ? ? ? 05 ? ? ? ? 55 89 E5 57 56 53 81 EC 3C 04 00 00 8B 5D 08 8B 75 14 89 85 ? ? FF FF 8B 45 0C",
 			SigFollowMode::None
 		};
 
@@ -1486,11 +1630,13 @@ namespace Patterns
 		{
 			"CRemoteClientManager::RecvPkt",
 			"55 89 E5 57 56 E8 ? ? ? ? 81 C6 ? ? ? ? 53 83 EC 1C "
-			// [esi+0x8XX]: PIC-relative global slot whose displacement
-			// drifts between Steam client builds (0x8B0 -> 0x8B4 on
-			// 1781041600).  Wildcard the displacement byte so the match
-			// survives that shift; the rest of the body keeps it unique.
-			"8B 86 ? 08 00 00 8B 00 85 C0 0F 85 ? ? ? ? "
+			// [esi+disp32]: PIC-relative global slot whose displacement drifts
+			// between Steam client builds (0x8B0 -> 0x8B4 on 1781041600; the
+			// whole low word moved on a later beta).  Wildcard both low
+			// displacement bytes so the match survives the shift; the two high
+			// bytes stay 00 00 (the slot is well under 0x10000) and the rest of
+			// the body keeps the match unique.
+			"8B 86 ? ? 00 00 8B 00 85 C0 0F 85 ? ? ? ? "
 			"C7 45 E4 00 00 00 00 83 EC 08 89 F3 6A 01 FF 75 0C "
 			"E8 ? ? ? ? 89 C7 83 C4 10 85 C0 0F 84 ? ? ? ? 83 EC 0C 50",
 			SigFollowMode::None

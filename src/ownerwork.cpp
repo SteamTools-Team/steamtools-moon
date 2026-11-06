@@ -135,15 +135,59 @@ namespace
 					break;
 				}
 
+				IClientCompat* const compat = getLocalClientCompat();
+				if (compat == nullptr)
+				{
+					// No live compatibility manager to talk to yet. Retry a
+					// bounded number of frames (it resolves once the local user
+					// is observed); if it never appears, the mapping we already
+					// persisted for the next preinit pass applies on restart, so
+					// keep the title hidden until then rather than publish a
+					// windows-only app Steam would treat as "no applicable
+					// platform" (0 mounted depots).
+					const std::uint32_t retry = cmd.attempt() + 1;
+					if (retry >= CompatLive::kMaxPollAttempts)
+					{
+						g_pLog->warn(
+							"OwnerWork: compat manager unavailable for app=%u; "
+							"keeping it hidden until restart\n",
+							cmd.appId());
+						break;
+					}
+					(void)queue().push(
+						OwnerQueue::Command::ensureCompat(
+							cmd.appId(), cmd.managedGeneration(), retry),
+						OwnerQueue::monotonicUs());
+					break;
+				}
+
 				const auto result = CompatLive::step(
-					getLocalClientCompat(), cmd.appId(), cmd.attempt() != 0);
-				if (result.status == CompatLive::StepStatus::Ready)
+					compat, cmd.appId(), cmd.attempt() != 0);
+
+				// Ready       -> an effective mapping already resolves for the
+				//                app (a config.vdf entry loaded at boot, a global
+				//                default, or a live specify that reflected at
+				//                once). Publish it into ownership now.
+				// Requested/  -> specifyCompatTool has been issued. Steam stores
+				// Waiting         and persists that mapping synchronously (it
+				//                reappears in config.vdf), but getCompatToolName
+				//                only reflects it after an internal refresh that
+				//                can lag several seconds. That readback is not a
+				//                precondition for the title to install or launch
+				//                through Proton, so publish rather than withhold
+				//                ownership until a restart the user never asked
+				//                for. This is the difference between the title
+				//                appearing in ~1-2s and it staying at "0 B"
+				//                until the next launch.
+				if (result.status != CompatLive::StepStatus::Unavailable)
 				{
 					(void)HotReload::publishPreparedBase(
 						cmd.appId(), cmd.managedGeneration());
 					break;
 				}
 
+				// Unavailable: a call into the compat interface faulted. Retry a
+				// bounded number of times before deferring to a restart.
 				const std::uint32_t nextAttempt = cmd.attempt() + 1;
 				if (nextAttempt >= CompatLive::kMaxPollAttempts)
 				{
@@ -261,22 +305,22 @@ namespace OwnerWork
 	void init()
 	{
 		bool rejected = false;
-		const bool on = parseQueueEnabled(std::getenv("STEAMTOOLS_OWNER_QUEUE"), true,
+		const bool on = parseQueueEnabled(std::getenv("SLSSTEAM_OWNER_QUEUE"), true,
 		                                  &rejected);
 		if (rejected)
 		{
-			g_pLog->warn("OwnerWork: ignoring unrecognised STEAMTOOLS_OWNER_QUEUE "
+			g_pLog->warn("OwnerWork: ignoring unrecognised SLSSTEAM_OWNER_QUEUE "
 			             "(expected on/off); queue stays enabled\n");
 		}
 		g_queueEnabled.store(on, std::memory_order_relaxed);
 
 		rejected = false;
 		const unsigned int stale =
-			parseBoundedMs(std::getenv("STEAMTOOLS_OWNER_QUEUE_MAX_STALE_MS"),
+			parseBoundedMs(std::getenv("SLSSTEAM_OWNER_QUEUE_MAX_STALE_MS"),
 			               kDefaultMaxStaleMs, kMaxMaxStaleMs, &rejected);
 		if (rejected)
 		{
-			g_pLog->warn("OwnerWork: ignoring invalid STEAMTOOLS_OWNER_QUEUE_MAX_STALE_MS "
+			g_pLog->warn("OwnerWork: ignoring invalid SLSSTEAM_OWNER_QUEUE_MAX_STALE_MS "
 			             "(expected 0-%u)\n", kMaxMaxStaleMs);
 		}
 		g_maxStaleMs.store(stale, std::memory_order_relaxed);
@@ -284,11 +328,11 @@ namespace OwnerWork
 		// The blocking handoff this replaced had its own knob. Measurements
 		// showed the wait always expired, so it is gone; say so instead of
 		// silently ignoring a setting someone may still have in a wrapper.
-		if (std::getenv("STEAMTOOLS_OWNER_QUEUE_DEADLINE_MS") != nullptr)
+		if (std::getenv("SLSSTEAM_OWNER_QUEUE_DEADLINE_MS") != nullptr)
 		{
-			g_pLog->warn("OwnerWork: STEAMTOOLS_OWNER_QUEUE_DEADLINE_MS is obsolete and "
+			g_pLog->warn("OwnerWork: SLSSTEAM_OWNER_QUEUE_DEADLINE_MS is obsolete and "
 			             "ignored (the handoff no longer blocks); use "
-			             "STEAMTOOLS_OWNER_QUEUE=off or STEAMTOOLS_OWNER_QUEUE_MAX_STALE_MS\n");
+			             "SLSSTEAM_OWNER_QUEUE=off or SLSSTEAM_OWNER_QUEUE_MAX_STALE_MS\n");
 		}
 
 		if (!on)

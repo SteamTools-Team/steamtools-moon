@@ -27,6 +27,8 @@
 
 #pragma once
 
+#include "depotkey_recv_policy.hpp"
+
 #include "../sdk/protobufs/steammessages_clientserver_2.pb.h"
 
 #include <cstdint>
@@ -64,6 +66,13 @@ namespace DepotKey
 	// merely-observed key (owned game / runtime) returns false.
 	bool isManagedDepot(uint32_t depotId);
 
+	// Central manifest-routing decision. Content Steam reports through a real
+	// package stays on Steam's authenticated path, even when its Lua entry has
+	// a manifest pin. Unlicensed managed content retains the local path.
+	bool manifestInManagedScope(uint32_t appId, uint32_t depotId,
+	                            bool depotHasPin = false,
+	                            uint32_t contentAppId = 0);
+
 	// Every MANAGED (Lua-injected) depot whose catalog entry records the
 	// given appId.  The catalog is loaded lazily into an in-memory index and
 	// parsed at most once per process.  Used to rebuild a token-locked app's
@@ -97,7 +106,12 @@ namespace DepotKey
 	void recvMsg(CProtoBufMsgBase* msg);
 	void sendMsg(CProtoBufMsgBase* msg);
 
-	// Specific protobuf-typed handlers.
-	void recvDepotKey(CMsgClientGetDepotDecryptionKeyResponse* resp);
+	// RecvAction + classifyRecv (the pure substitution decision) live in
+	// depotkey_recv_policy.hpp so they can be unit-tested without protobuf.
+
+	// Specific protobuf-typed handlers. recvDepotKey returns true iff it
+	// rewrote the response in place (so the CNetPacket CM-receive path
+	// reserializes the packet); the classic CProtoBufMsgBase path ignores it.
+	bool recvDepotKey(CMsgClientGetDepotDecryptionKeyResponse* resp);
 	void sendDepotKey(CMsgClientGetDepotDecryptionKey* req);
 }

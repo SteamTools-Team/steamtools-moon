@@ -39,15 +39,19 @@ namespace
 	lm_address_t g_tramp = LM_ADDRESS_BAD;
 	lm_size_t    g_size = 0;
 
-	bool g_pinActive = false;   // STEAMTOOLS_RECONCILE_PIN: perform the gid rewrite
-	bool g_trace = false;       // STEAMTOOLS_RECONCILE_TRACE: per-call logging
+	bool g_pinActive = false;   // SLSSTEAM_RECONCILE_PIN: perform the gid rewrite
+	bool g_trace = false;       // SLSSTEAM_RECONCILE_TRACE: per-call logging
 	std::atomic<int> g_traceBudget{400};
 
 	// ctx layout (confirmed live on build cfe99f0c).
 	constexpr size_t kCtxFlagsOff = 0x04;
 	constexpr size_t kCtxAppIdOff = 0x08;
-	constexpr size_t kCtxDepotPtrOff = 0x78;
-	constexpr size_t kCtxDepotCountOff = 0x84;
+	// The depot CUtlVector inside ctx moves when Steam grows the context
+	// (0x78 -> 0x90 on the 2026-10 client), so it is decoded from
+	// EvaluateConfigChanges at setup.  0 = not located: the ctx-vector patch
+	// stays off instead of rewriting whatever field now sits at a stale offset.
+	size_t g_ctxDepotVecOff = 0;
+	constexpr size_t kCtxVecCountOff = 0x0c;  // CUtlVector size, after base
 	// flag bit marking the TARGET/appinfo ctx (vs the ACTIVE/installed ctx).
 	constexpr uint32_t kFlagTargetSide = 0x8;
 	// DepotEntry: DepotId @ +0, ManifestGid @ +0x8, Size @ +0x10,
@@ -143,11 +147,12 @@ namespace
 	void patchTargetCtx(void* ctxv, uint32_t appId, uint32_t flags)
 	{
 		if (!(flags & kFlagTargetSide)) return;       // target/appinfo side only
+		if (g_ctxDepotVecOff == 0) return;            // layout not decoded
 
 		auto* ctx = reinterpret_cast<uint8_t*>(ctxv);
-		auto* base = *reinterpret_cast<uint8_t* const*>(ctx + kCtxDepotPtrOff);
-		auto* const countPtr =
-		    reinterpret_cast<int32_t*>(ctx + kCtxDepotCountOff);
+		auto* base = *reinterpret_cast<uint8_t* const*>(ctx + g_ctxDepotVecOff);
+		auto* const countPtr = reinterpret_cast<int32_t*>(
+		    ctx + g_ctxDepotVecOff + kCtxVecCountOff);
 		int32_t count = *countPtr;
 		if (!base || count <= 0 || count > kMaxDepots) return;
 
@@ -186,9 +191,20 @@ namespace
 	// return-address inspection.
 	//
 	// CUtlVector<DepotEntry>: element base @ +0x0, count @ +0xc.
-	constexpr size_t kBuilderCallOff = 0x183;  // EvalAddr -> the `e8` opcode
 	constexpr size_t kVecBaseOff = 0x00;
 	constexpr size_t kVecCountOff = 0x0c;
+
+	// Whether an address lands in an executable segment. Used to validate a
+	// scanned near-call target so drift recovery can never pick a byte whose
+	// decoded destination is not code.
+	bool executableAddress(lm_address_t address)
+	{
+		lm_segment_t segment{};
+		return address != 0 && address != LM_ADDRESS_BAD &&
+			LM_FindSegment(address, &segment) &&
+			(segment.prot & LM_PROT_XR) == LM_PROT_XR &&
+			address >= segment.base && address < segment.end;
+	}
 
 	using BuildTargetFn_t = void* (*)(void*, uint32_t, void*, void*, void*,
 	                                  void*, void*, void*);
@@ -238,14 +254,30 @@ namespace
 	// ctx-vector patch alone rather than hooking a wrong address.
 	bool installBuildTargetHook(lm_address_t evalAddr)
 	{
-		const auto* site = reinterpret_cast<const uint8_t*>(evalAddr)
-		                   + kBuilderCallOff;
-		if (site[0] != 0xE8)  // expected `call rel32`
+		const auto* fn = reinterpret_cast<const uint8_t*>(evalAddr);
+		const size_t scanLen = ReconcilePin::detail::kBuilderCallOff
+		                     + ReconcilePin::detail::kBuilderCallWindow + 8;
+		// The RE'd call offset drifts when Steam recompiles the function (the
+		// beta client moved it), so locate the call instead of trusting a fixed
+		// offset. A validated near-call target and a uniqueness requirement keep
+		// this from ever hooking a wrong address; on ambiguity/absence it
+		// degrades to the ctx-vector patch alone, exactly as before.
+		const long callOff = ReconcilePin::detail::findBuilderCallRel32(
+		    fn, scanLen, reinterpret_cast<uintptr_t>(fn),
+		    ReconcilePin::detail::kBuilderCallOff,
+		    ReconcilePin::detail::kBuilderCallWindow,
+		    [](uintptr_t target) {
+			    return executableAddress(static_cast<lm_address_t>(target));
+		    });
+		if (callOff < 0)
 		{
-			g_pLog->warn("ReconcilePin: builder call site not `call rel32` "
-			             "(got 0x%02x); target-local fix disabled\n", site[0]);
+			g_pLog->warn("ReconcilePin: target-vector builder call not located "
+			             "near +0x%zx (byte 0x%02x); target-local fix disabled\n",
+			             ReconcilePin::detail::kBuilderCallOff,
+			             fn[ReconcilePin::detail::kBuilderCallOff]);
 			return false;
 		}
+		const auto* site = fn + callOff;
 		int32_t rel = 0;
 		__builtin_memcpy(&rel, site + 1, sizeof(rel));
 		const lm_address_t builderAddr = reinterpret_cast<lm_address_t>(
@@ -304,12 +336,12 @@ namespace
 			const uint32_t appId = *reinterpret_cast<const uint32_t*>(c + kCtxAppIdOff);
 			const uint32_t flags = *reinterpret_cast<const uint32_t*>(c + kCtxFlagsOff);
 
-			if (g_trace)
+			if (g_trace && g_ctxDepotVecOff != 0)
 			{
 				void* base =
-				    *reinterpret_cast<void* const*>(c + kCtxDepotPtrOff);
-				const int32_t count =
-				    *reinterpret_cast<const int32_t*>(c + kCtxDepotCountOff);
+				    *reinterpret_cast<void* const*>(c + g_ctxDepotVecOff);
+				const int32_t count = *reinterpret_cast<const int32_t*>(
+				    c + g_ctxDepotVecOff + kCtxVecCountOff);
 				traceLog(appId, flags, base, count);
 			}
 			patchTargetCtx(ctx, appId, flags);
@@ -327,11 +359,11 @@ namespace ReconcilePin
 		// configured ManifestPins entry, while lockedApps remains exclusively the
 		// update-suppression policy in Apps::shouldDisableUpdates.
 		g_pinActive = true;
-		if (const char* e = std::getenv("STEAMTOOLS_RECONCILE_PIN"))
+		if (const char* e = std::getenv("SLSSTEAM_RECONCILE_PIN"))
 		{
 			g_pinActive = !(e[0] == '0' && e[1] == '\0');
 		}
-		if (const char* e = std::getenv("STEAMTOOLS_RECONCILE_TRACE"))
+		if (const char* e = std::getenv("SLSSTEAM_RECONCILE_TRACE"))
 		{
 			g_trace = !(e[0] == '0' && e[1] == '\0');
 		}
@@ -341,6 +373,25 @@ namespace ReconcilePin
 			g_pLog->warn("ReconcilePin: EvaluateConfigChanges pattern not found; "
 			             "loop fix disabled\n");
 			return false;
+		}
+
+		// Decode the ctx depot-vector offset before the detour can run, reading
+		// no further than the end of the code segment.
+		g_ctxDepotVecOff = 0;
+		lm_segment_t segment{};
+		if (LM_FindSegment(pat.address, &segment) && segment.end > pat.address)
+		{
+			const size_t readable = static_cast<size_t>(segment.end - pat.address);
+			const long vecOff = ReconcilePin::detail::findCtxDepotVectorOffset(
+			    reinterpret_cast<const uint8_t*>(pat.address),
+			    readable < ReconcilePin::detail::kCtxDepotLoopScanLen
+			        ? readable : ReconcilePin::detail::kCtxDepotLoopScanLen);
+			if (vecOff > 0) g_ctxDepotVecOff = static_cast<size_t>(vecOff);
+		}
+		if (g_ctxDepotVecOff == 0)
+		{
+			g_pLog->warn("%s", "ReconcilePin: context depot vector not located; "
+			                    "ctx-vector fix disabled\n");
 		}
 
 		g_addr = pat.address;
@@ -357,9 +408,10 @@ namespace ReconcilePin
 		}
 		g_orig = reinterpret_cast<ReconFn_t>(g_tramp);
 		g_pLog->info("ReconcilePin: hooked EvaluateConfigChanges at %p "
-		             "(pin=%d empty=1 trace=%d)\n",
+		             "(pin=%d empty=1 trace=%d ctx_depots=+0x%zx)\n",
 		             reinterpret_cast<void*>(g_addr),
-		             static_cast<int>(g_pinActive), static_cast<int>(g_trace));
+		             static_cast<int>(g_pinActive), static_cast<int>(g_trace),
+		             g_ctxDepotVecOff);
 
 		// Also patch the appinfo-derived TARGET local (the -0x90(ebp)
 		// CUtlVector) via a caller-gated hook on its builder, for apps whose

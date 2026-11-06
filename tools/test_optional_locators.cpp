@@ -1,16 +1,26 @@
 // Validate the optional runtime-capability locators against the installed
 // 32-bit Steam client.
 //
-// These two are the only compiled locators whose failure silently degrades a
+// These are the compiled locators whose failure silently degrades a
 // feature instead of failing the load, so a signature that stops matching after
 // a client update is easy to miss:
 //
 //   CUser::ProcessPendingLicenseUpdates  PackagePatch loses the runtime license
 //                                        refresh, so adding a game needs a
 //                                        Steam restart again.
+//   CCMInterface::RecvPkt                Family Share message filtering turns
+//                                        off.
 //   CSteamApp::OwnershipFlagsReference    LibraryRemoval cannot derive the
 //                                        ownership-flags field offset, so
 //                                        visual library removal turns off.
+//   ParentalSignatureCheck               the local parental unlock turns off.
+//   CAPIJob::GetPlayerStats              the stats-job debug trace turns off.
+//   CUser::m_CompatManager               live compatibility-tool mapping for
+//                                        newly added titles turns off.
+//   CDepotDownloadMgr::BuildDepotDependency
+//                                        install-plan pinning, empty-depot
+//                                        pruning and event-driven manifest
+//                                        staging turn off.
 //
 // Each signature is asserted to be present verbatim in src/patterns.cpp, so
 // this test can never pass against a stale private copy of the pattern, and to
@@ -21,6 +31,7 @@
 // or point it at another install:
 //   make test-optional-locators STEAMCLIENT=... STEAMUI=...
 
+#include "feats/compatlive.hpp"
 #include "feats/libraryremoval_policy.hpp"
 
 #include <cstdint>
@@ -144,15 +155,26 @@ int main(int argc, char** argv)
 	const std::string source = readFile(argc == 4 ? argv[3] : "src/patterns.cpp");
 
 	// The trailing `lea eax,[ebx+disp32]` reaches a data symbol through the PIC
-	// base, so its displacement moves whenever the GOT layout shifts (it went
-	// 0x3B314 -> 0x3B714 between the 2026-08-03 and 2026-08-16 clients). The
-	// hook only calls the resolved entry, so the displacement is location-only
-	// and must stay wildcarded; the member offsets it loads (0x1C7C/0x1C70) are
-	// read by the function itself and stay pinned as identity.
+	// base, so its displacement moves whenever the GOT layout shifts. The hook
+	// only calls the resolved entry, so it stays wildcarded. The two CUser
+	// member offsets it loads (count near 0x1C7C, array base near 0x1C70) drift
+	// by 4 across builds (0x1C7C->0x1C78, 0x1C70->0x1C6C on a later beta); they
+	// are internal to the function, so only their low byte is masked while the
+	// 0x1C high byte stays pinned.
 	(void)resolveUnique(
 		client, "CUser::ProcessPendingLicenseUpdates",
-		"55 57 56 53 E8 ? ? ? ? 81 C3 ? ? ? ? 83 EC 2C 8B 44 24 40 8B 88 7C 1C "
-		"00 00 85 C9 0F 8E ? ? ? ? 05 70 1C 00 00 89 44 24 18 8D 83 ? ? ? ? 8B 30",
+		"55 57 56 53 E8 ? ? ? ? 81 C3 ? ? ? ? 83 EC 2C 8B 44 24 40 8B 88 ? 1C "
+		"00 00 85 C9 0F 8E ? ? ? ? 05 ? 1C 00 00 89 44 24 18 8D 83 ? ? ? ? 8B 30",
+		source);
+
+	// The stack frame grew on a later beta (sub esp,0x4cc -> larger), drifting
+	// both the frame immediate and the frame-relative spill of the saved
+	// argument together. Both are local-frame layout, not values the hook reads,
+	// so mask the frame immediate and the spill displacement (high bytes kept).
+	(void)resolveUnique(
+		client, "CCMInterface::RecvPkt",
+		"55 89 E5 57 56 E8 ? ? ? ? 81 C6 ? ? ? ? 53 81 EC ? ? 00 00 8B 45 08 "
+		"8B 7D 0C 89 85 ? ? FF FF 65 A1 14 00 00 00 89 45 E4 31 C0 8B 86",
 		source);
 
 	// FillInAppOverview serializes several fields with this very shape, one
@@ -184,6 +206,56 @@ int main(int argc, char** argv)
 			          << *offset << std::dec << '\n';
 		}
 	}
+
+	// The failure path pushes a member near 0x182 (0x166 on the 2026-10
+	// client) for its log line; only the branch at +2 is patched, so the
+	// member offset is masked. The jne distance (0x27) keeps the sibling
+	// check (jne 0x63) out.
+	const std::size_t parental = resolveUnique(
+		client, "ParentalSignatureCheck",
+		"84 C0 75 27 8B 85 ? ? ? ? 8D 9D ? ? ? ? 83 EC 04 FF B0 ? ? 00 00 "
+		"8D 86 ? ? ? ? 50 53 E8 ? ? ? ?",
+		source);
+	if (parental != std::string::npos)
+	{
+		expect(static_cast<std::uint8_t>(client[parental + 2]) == 0x75,
+		       "ParentalSignatureCheck: the patched byte is not the jne");
+	}
+
+	// Direct entry of the CAPIJobRequestUserStats job body (the function
+	// carrying "Player.GetUserStats#1"); its only call site was rewritten on
+	// the 2026-10 client, so the call-site form no longer exists.
+	(void)resolveUnique(
+		client, "CAPIJob::GetPlayerStats",
+		"55 89 E5 57 E8 ? ? ? ? 81 C7 ? ? ? ? 56 53 81 EC ? ? 00 00 8B 75 08 "
+		"89 B5 ? ? FF FF 89 FB 65 A1 14 00 00 00 89 45 E4 31 C0 8D 85 ? ? FF "
+		"FF 6A 00 50",
+		source);
+
+	// The CUser constructor's embedded CCompatManager; the matched LEA must
+	// decode to the member offset CSteamEngine uses at runtime.
+	const std::size_t compat = resolveUnique(
+		client, "CUser::m_CompatManager",
+		"8D 8E ? ? ? ? 58 56 51 89 8D ? ? ? ? E8 ? ? ? ? 58 5A C7 86 ? ? ? ? "
+		"FF FF FF FF",
+		source);
+	if (compat != std::string::npos)
+	{
+		const auto* bytes =
+			reinterpret_cast<const std::uint8_t*>(client.data()) + compat;
+		expect(CompatLive::decodeManagerOffset(
+			       std::span<const std::uint8_t>(bytes, 6)).has_value(),
+		       "CUser::m_CompatManager: the matched LEA does not decode");
+	}
+
+	// The install-plan builder (eight flag-0/flag-1 callers). The 2026-10
+	// client shrank its frame to 0x43c and reassigned its argument registers;
+	// the yielding sibling that kept the old 0x48c frame is not this hook.
+	(void)resolveUnique(
+		client, "CDepotDownloadMgr::BuildDepotDependency",
+		"E8 ? ? ? ? 05 ? ? ? ? 55 89 E5 57 56 53 81 EC 3C 04 00 00 8B 5D 08 "
+		"8B 75 14 89 85 ? ? FF FF 8B 45 0C",
+		source);
 
 	if (failures != 0)
 	{

@@ -105,7 +105,7 @@ namespace PatternCache
 	);
 
 	// `environmentOverride` is a test seam; runtime callers pass getenv's
-	// STEAMTOOLS_PATTERN_CACHE value.  Invalid values leave the config decision
+	// SLSSTEAM_PATTERN_CACHE value.  Invalid values leave the config decision
 	// unchanged, while 0/no/false/off and 1/yes/true/on are explicit.
 	bool enabled(bool configEnabled, const char* environmentOverride) noexcept;
 }

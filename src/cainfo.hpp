@@ -41,12 +41,12 @@ struct CaPaths
 	std::string dir;  // -> CURLOPT_CAPATH
 };
 
-// Env vars checked (in order) for an explicit CA *file*.  STEAMTOOLS_CA_BUNDLE
+// Env vars checked (in order) for an explicit CA *file*.  SLSSTEAM_CA_BUNDLE
 // is our own escape hatch and wins over the standard libcurl/OpenSSL ones.
 inline const std::vector<std::string>& caFileEnvVars()
 {
 	static const std::vector<std::string> v = {
-		"STEAMTOOLS_CA_BUNDLE",
+		"SLSSTEAM_CA_BUNDLE",
 		"CURL_CA_BUNDLE",
 		"SSL_CERT_FILE",
 	};

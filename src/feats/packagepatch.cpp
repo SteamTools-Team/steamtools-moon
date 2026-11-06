@@ -23,6 +23,8 @@
 #include "hotreload_capabilities.hpp"
 #include "license_refresh_policy.hpp"
 #include "libraryremoval.hpp"
+#include "stats_policy.hpp"
+#include "manifestdonor.hpp"
 
 #include "libmem/libmem.h"
 
@@ -47,9 +49,9 @@ namespace
 	// LoadPackage(PackageInfo*, uint8* sha1, int32 cn, void* parserCtx) -> bool
 	using LoadPackage_t = bool(*)(PackageInfo*, uint8_t*, int32_t, void*);
 
-	// CUtlMemoryGrow takes the CUtlMemory base (i.e. &vec->m_Memory which
-	// is &vec->m_Memory.m_pMemory because CUtlMemory's first member IS
-	// m_pMemory) and a grow_size.  Returns void* (we don't use it).
+	// CUtlMemoryGrow takes the CUtlMemory base (i.e. &vec->memory which
+	// is &vec->memory.base because CUtlMemory's first member IS
+	// base) and a grow_size.  Returns void* (we don't use it).
 	using CUtlMemoryGrow_t = void*(*)(void* /*pMem*/, int /*growSize*/);
 	using MarkLicenseAsChanged_t = std::int64_t (__attribute__((cdecl)) *)(
 		void*, std::uint32_t, bool);
@@ -264,8 +266,8 @@ namespace
 
 	bool validLiveVector(const CUtlVector<std::uint32_t>& vec) noexcept
 	{
-		return vec.m_Size <= vec.m_Memory.m_nAllocationCount &&
-			(vec.m_Size == 0 || vec.m_Memory.m_pMemory != nullptr);
+		return vec.size <= vec.memory.alloc &&
+			(vec.size == 0 || vec.memory.base != nullptr);
 	}
 
 	bool buildVectorPlan(
@@ -286,9 +288,9 @@ namespace
 		}
 
 		std::uint32_t kept = 0;
-		for (std::uint32_t index = 0; index < vec.m_Size; ++index)
+		for (std::uint32_t index = 0; index < vec.size; ++index)
 		{
-			const std::uint32_t id = vec.m_Memory.m_pMemory[index];
+			const std::uint32_t id = vec.memory.base[index];
 			if (seeded.count(id) != 0 && plan.desired.count(id) == 0)
 			{
 				plan.removes = true;
@@ -298,7 +300,7 @@ namespace
 		}
 
 		plan.missing = HotReloadPackage::missingFromVector(
-			vec.m_Memory.m_pMemory, vec.m_Size, plan.desired);
+			vec.memory.base, vec.size, plan.desired);
 		const std::size_t target = static_cast<std::size_t>(kept) +
 			plan.missing.size();
 		if (target > std::numeric_limits<std::uint32_t>::max())
@@ -315,12 +317,12 @@ namespace
 	{
 		if (!validLiveVector(vec))
 			return false;
-		if (vec.m_Memory.m_nAllocationCount >= plan.targetSize)
+		if (vec.memory.alloc >= plan.targetSize)
 			return true;
-		if (g_pCUtlMemoryGrow == nullptr || plan.targetSize <= vec.m_Size)
+		if (g_pCUtlMemoryGrow == nullptr || plan.targetSize <= vec.size)
 			return false;
 
-		const std::uint32_t growBy = plan.targetSize - vec.m_Size;
+		const std::uint32_t growBy = plan.targetSize - vec.size;
 		if (growBy > static_cast<std::uint32_t>(
 				std::numeric_limits<int>::max()))
 		{
@@ -329,14 +331,14 @@ namespace
 		{
 			auto span = AffTrace::fnSpan(
 				AffTrace::Call::CutlMemoryGrow, AffTrace::Mode::NA);
-			g_pCUtlMemoryGrow(&vec.m_Memory, static_cast<int>(growBy));
+			g_pCUtlMemoryGrow(&vec.memory, static_cast<int>(growBy));
 		}
 		if (!validLiveVector(vec) ||
-			vec.m_Memory.m_nAllocationCount < plan.targetSize)
+			vec.memory.alloc < plan.targetSize)
 		{
 			g_pLog->warn(
 				"PackagePatch: %s capacity preparation failed (%u required, %u available)\n",
-				label, plan.targetSize, vec.m_Memory.m_nAllocationCount);
+				label, plan.targetSize, vec.memory.alloc);
 			return false;
 		}
 		return true;
@@ -363,14 +365,14 @@ namespace
 		const VectorPlan& plan
 	) noexcept
 	{
-		const std::uint32_t previousSize = vec.m_Size;
+		const std::uint32_t previousSize = vec.size;
 		HotReloadPackage::compactInjected(
-			vec.m_Memory.m_pMemory, vec.m_Size, seeded, plan.desired);
+			vec.memory.base, vec.size, seeded, plan.desired);
 
 		for (const std::uint32_t id : plan.missing)
-			vec.m_Memory.m_pMemory[vec.m_Size++] = id;
+			vec.memory.base[vec.size++] = id;
 
-		return plan.removes || !plan.missing.empty() || vec.m_Size != previousSize;
+		return plan.removes || !plan.missing.empty() || vec.size != previousSize;
 	}
 
 	SnapshotApplyResult applySnapshotLocked(
@@ -627,7 +629,7 @@ namespace
 		// Otherwise native package-0 apps acquire false injected provenance,
 		// and previously injected IDs cannot be restored after a package reload.
 		auto missing = HotReloadPackage::missingFromVector(
-			vec.m_Memory.m_pMemory, vec.m_Size, ids);
+			vec.memory.base, vec.size, ids);
 		missing.erase(0);
 		const std::vector<uint32_t> fresh(missing.begin(), missing.end());
 		if (fresh.empty())
@@ -635,7 +637,7 @@ namespace
 			return 0;
 		}
 
-		const uint32_t oldSize = vec.m_Size;
+		const uint32_t oldSize = vec.size;
 		const uint32_t toAdd = static_cast<uint32_t>(fresh.size());
 		if (toAdd > static_cast<uint32_t>(std::numeric_limits<int>::max()) ||
 		    toAdd > UINT32_MAX - oldSize) return 0;
@@ -644,10 +646,10 @@ namespace
 			// CUtlMemoryGrow against a live Steam vector.
 			auto span = AffTrace::fnSpan(AffTrace::Call::CutlMemoryGrow,
 			                             AffTrace::Mode::NA);
-			g_pCUtlMemoryGrow(&vec.m_Memory, static_cast<int>(toAdd));
+			g_pCUtlMemoryGrow(&vec.memory, static_cast<int>(toAdd));
 		}
 
-		const uint32_t available = vec.m_Memory.m_nAllocationCount;
+		const uint32_t available = vec.memory.alloc;
 		if (available < oldSize + toAdd)
 		{
 			g_pLog->warn
@@ -658,18 +660,18 @@ namespace
 			);
 			return 0;
 		}
-		if (!vec.m_Memory.m_pMemory)
+		if (!vec.memory.base)
 		{
-			g_pLog->warn("PackagePatch: %s.m_pMemory still null after Grow\n", vecLabel);
+			g_pLog->warn("PackagePatch: %s.memory.base still null after Grow\n", vecLabel);
 			return 0;
 		}
 
 		for (uint32_t i = 0; i < toAdd; ++i)
 		{
-			vec.m_Memory.m_pMemory[oldSize + i] = fresh[i];
+			vec.memory.base[oldSize + i] = fresh[i];
 			seenSet.insert(fresh[i]);
 		}
-		vec.m_Size = oldSize + toAdd;
+		vec.size = oldSize + toAdd;
 		return toAdd;
 	}
 
@@ -713,10 +715,10 @@ namespace
 		{
 			g_pLog->info
 			(
-				"PackagePatch: package 0 now has AppIdVec.m_Size=%u "
-				"DepotIdVec.m_Size=%u (added %u apps, %u depots)\n",
-				pPkg->AppIdVec.m_Size,
-				pPkg->DepotIdVec.m_Size,
+				"PackagePatch: package 0 now has AppIdVec.size=%u "
+				"DepotIdVec.size=%u (added %u apps, %u depots)\n",
+				pPkg->AppIdVec.size,
+				pPkg->DepotIdVec.size,
 				appsAdded,
 				depotsAdded
 			);
@@ -742,15 +744,17 @@ namespace
 
 		g_pLog->debug
 		(
-			"LoadPackage: PackageId=%u Status=%d AppIdVec.m_Size=%u result=%d\n",
+			"LoadPackage: PackageId=%u Status=%d AppIdVec.size=%u result=%d\n",
 			pInfo->PackageId,
 			static_cast<int>(pInfo->Status),
-			pInfo->AppIdVec.m_Size,
+			pInfo->AppIdVec.size,
 			result
 		);
 
 		if (pInfo->PackageId != 0)
 		{
+			ManifestDonor::observePackage(
+				pInfo, result && pInfo->Status == EPackageStatus::Available);
 			return result;
 		}
 

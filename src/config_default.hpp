@@ -61,7 +61,9 @@ FakeOffline:
 
 #Change AppIds of games to enable networking features
 #Use 0 as a key to set for all unowned Apps
-#Keeps track of the proper AppIds via game launches, so please do not start multiple FakeAppId enabled games simultaneously
+#Do not run multiple apps under the same AppId simultaneously! It's possible but
+#will most likely cause undefined behaviour
+#Requires access to /proc to read processes' real AppId from their environment (most distros allow this by default)
 FakeAppIds:
 
 #Custom ingame statuses. Set AppId to 0 to disable
@@ -77,6 +79,21 @@ SubscriptionTimestamps:
 
 #Blocks games from unlocking on wrong accounts
 DenuvoGames:
+
+#Overrides your SteamId an app sees. Only needed when the automatic SteamId spoofing
+#fails (some games do call GetSteamId before they request your ticket)
+#Also can be used to workaround locked saves
+#Either set to SteamId or to 0 to use the SteamId in the cached AppOwnershipTicket
+SteamIdOverride:
+
+#Makes steamId spoofing a lot smarter than the default by analyzing
+#an executable that freshly connected to the Steamclient. This might slow down game
+#startup times on slower disks (less than 10ms for SteamDRM, up to 20-2000ms for Denuvo on my SSD)
+#Requires access to /proc/gamepid
+#Created the same way as LogLevels
+#SteamDRM = 0x1
+#Denuvo = 0x2
+SmartTickets: 0x1
 
 #Automatically disable SteamTools when steamclient.so does not match a predefined file hash that is known to work
 #You should enable this if you're planing to use SteamTools with Steam Deck's gamemode
@@ -103,9 +120,42 @@ API: no
 #NOT using CloudRedirect, to avoid a doomed cloud sync that Steam rejects.
 DisableCloud: no
 
+#Keep managed games on the latest build. Default "yes" (games auto-update).
+#Set to "no" to lock every managed game to its currently installed build (like
+#LuaTools' "Auto Update Apps" toggle). Builds you pin per game still apply.
+AutoUpdateApps: yes
+
+# Share short-lived manifest request codes for depots this account really owns.
+# The wanted list is downloaded from the archive; only matching depots are sent.
+# Set Enabled: no to disable both active requests and passive capture.
+Donate:
+  Enabled: yes
+  Url: "https://manifest.luastools.xyz"
+  IntervalSecs: 30
+  WantedRefreshSecs: 300
+  MaxMintsPerCycle: 25
+  MinMintIntervalMs: 2000
+  MaxMintsPerSession: 0 # 0 means no session cap
+
 # Inject every storefront-advertised DLC into package 0. Keep disabled by
 # default; content-backed DLC is still injected automatically.
 InjectAllAdvertisedDlc: no
+
+#Show achievements for unowned games. Steam only returns a game's achievement
+#schema to an account that owns it, so the schema is sourced from an owner (see
+#AchievementOwnerId). Set to "no" to disable achievement schema spoofing.
+Achievements: yes
+
+#Fallback account (SteamID64) used to read achievement schemas when a game has
+#no per-game override in AchievementOwners. Only the public schema is read; the
+#account is never signed in to.
+AchievementOwnerId: 76561198028121353
+
+#Per-game override of the achievement-schema source account. Same shape as
+#FakeAppIds:
+#AchievementOwners:
+#  AppId: SteamID64
+AchievementOwners:
 
 # Local pattern cache keyed by GNU build-id, module size, and mtime. Each
 # cached signature is rechecked before an address is accepted.

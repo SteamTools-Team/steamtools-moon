@@ -159,6 +159,40 @@ inline std::vector<uint32_t> removedAppIds(
 	return removed;
 }
 
+// Recover ids that a racy directory scan dropped.
+//
+// The stplug-in directory is written live: the plugin adds a game by dropping
+// `<id>.lua` into it (non-atomically). A concurrent write/rename can make a
+// single `directory_iterator` pass skip a still-present entry, so one fresh
+// scan can transiently be a strict subset of the previously-known set. If that
+// short scan were taken at face value, the missing id would be classified as a
+// removal — quarantining the app's cache and clearing its tickets — and the
+// next (complete) scan would re-add it, re-provisioning its metadata over the
+// network and re-broadcasting package-0. That loop is the observed flap.
+//
+// This confirms each apparent drop against the actual on-disk source: any
+// previously-known id that is absent from `freshScan` but whose source still
+// exists is a race artifact and is returned for the caller to re-insert. A
+// genuinely removed id (source gone, `sourceExists(id)` false) is NOT returned,
+// so real removals are still honored. `sourceExists` is a predicate over the
+// authoritative source (e.g. `exists(stplug-in/<id>.lua)`); a direct stat of a
+// specific stable file does not suffer the readdir race that dropped it.
+template <typename SourceExistsFn>
+inline std::vector<uint32_t> recoverRacyScanDrops(
+    const std::unordered_set<uint32_t>& freshScan,
+    const std::unordered_set<uint32_t>& previouslyKnown,
+    SourceExistsFn sourceExists)
+{
+	std::vector<uint32_t> recovered;
+	for (const uint32_t appId : previouslyKnown)
+	{
+		if (appId == 0 || freshScan.contains(appId)) continue;
+		if (sourceExists(appId)) recovered.push_back(appId);
+	}
+	std::sort(recovered.begin(), recovered.end());
+	return recovered;
+}
+
 struct ReloadRemovals
 {
 	std::vector<uint32_t> managed;
@@ -274,6 +308,55 @@ steamAppsRootsFor(const std::filesystem::path& steamRoot)
 	return roots;
 }
 
+// Decide whether a single appmanifest represents an installed app: its
+// installdir must resolve to a directory under `common/` that holds content
+// beyond the `.DepotDownloader` marker. Sets `isAccela` from that marker.
+// Shared by the full directory scan and the per-app re-confirmation so both
+// apply identical rules and cannot drift.
+inline bool manifestInstalledState(
+    const std::filesystem::path& steamapps,
+    const std::filesystem::path& manifestPath,
+    bool& isAccela)
+{
+	isAccela = false;
+
+	std::ifstream manifest(manifestPath);
+	if (!manifest.is_open()) return false;
+	std::ostringstream contents;
+	contents << manifest.rdbuf();
+	const std::string installDir = quotedField(contents.str(), "installdir");
+	const std::filesystem::path relative(installDir);
+	if (relative.empty() || relative.is_absolute() || relative.has_parent_path()
+	    || relative == "." || relative == "..")
+	{
+		return false;
+	}
+
+	std::error_code ec;
+	const auto gameDir = steamapps / "common" / relative;
+	if (!std::filesystem::is_directory(gameDir, ec) || ec) return false;
+
+	const bool hasAccelaMarker =
+	    std::filesystem::exists(gameDir / ".DepotDownloader", ec) && !ec;
+	ec.clear();
+	bool hasContent = false;
+	std::filesystem::directory_iterator gameEntries(
+	    gameDir, std::filesystem::directory_options::skip_permission_denied, ec);
+	if (ec) return false;
+	for (const auto& gameEntry : gameEntries)
+	{
+		if (gameEntry.path().filename() != ".DepotDownloader")
+		{
+			hasContent = true;
+			break;
+		}
+	}
+	if (!hasContent) return false;
+
+	isAccela = hasAccelaMarker;
+	return true;
+}
+
 // Resolve installed app ids from appmanifest_<id>.acf files whose installdir
 // still contains content. Accela entries additionally require the install's
 // .DepotDownloader marker, matching Accela's own scanner.
@@ -295,45 +378,42 @@ scanInstalledApps(const std::vector<std::filesystem::path>& steamAppsRoots)
 			    entry.path().filename().string());
 			if (appId == 0) continue;
 
-			std::ifstream manifest(entry.path());
-			if (!manifest.is_open()) continue;
-			std::ostringstream contents;
-			contents << manifest.rdbuf();
-			const std::string installDir = quotedField(contents.str(), "installdir");
-			const std::filesystem::path relative(installDir);
-			if (relative.empty() || relative.is_absolute() || relative.has_parent_path()
-			    || relative == "." || relative == "..")
-			{
+			bool isAccela = false;
+			if (!manifestInstalledState(steamapps, entry.path(), isAccela))
 				continue;
-			}
-
-			const auto gameDir = steamapps / "common" / relative;
-			if (!std::filesystem::is_directory(gameDir, ec) || ec)
-			{
-				ec.clear();
-				continue;
-			}
-			const bool hasAccelaMarker =
-			    std::filesystem::exists(gameDir / ".DepotDownloader", ec) && !ec;
-			ec.clear();
-			bool hasContent = false;
-			std::filesystem::directory_iterator gameEntries(
-			    gameDir, std::filesystem::directory_options::skip_permission_denied, ec);
-			if (ec) { ec.clear(); continue; }
-			for (const auto& gameEntry : gameEntries)
-			{
-				if (gameEntry.path().filename() != ".DepotDownloader")
-				{
-					hasContent = true;
-					break;
-				}
-			}
-			if (!hasContent) continue;
 			result.all.insert(appId);
-			if (hasAccelaMarker) result.accela.insert(appId);
+			if (isAccela) result.accela.insert(appId);
 		}
 	}
 	return result;
+}
+
+// Re-confirm one app's installed status directly from its manifest path, with
+// no directory listing. `scanInstalledApps` walks the whole steamapps tree, so
+// a concurrent write/rename (Steam rewrites appmanifests at boot/update) can
+// make one pass skip a still-present entry; taken at face value that reads as
+// an uninstall and revokes ownership + quarantines the cache. This targeted
+// stat of the specific manifest does not suffer that readdir race, so a caller
+// can distinguish a real uninstall from a scan artifact. Sets `isAccela`.
+inline bool confirmInstalledApp(
+    const std::vector<std::filesystem::path>& steamAppsRoots,
+    uint32_t appId, bool& isAccela)
+{
+	isAccela = false;
+	if (appId == 0) return false;
+
+	const std::string manifestName =
+	    "appmanifest_" + std::to_string(appId) + ".acf";
+	for (const auto& steamapps : steamAppsRoots)
+	{
+		std::error_code ec;
+		const auto manifestPath = steamapps / manifestName;
+		if (!std::filesystem::is_regular_file(manifestPath, ec) || ec) continue;
+		if (manifestInstalledState(steamapps, manifestPath, isAccela))
+			return true;
+	}
+	isAccela = false;
+	return false;
 }
 
 inline AppIdSets classifyAppIds(

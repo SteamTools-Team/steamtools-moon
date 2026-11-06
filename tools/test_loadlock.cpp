@@ -27,7 +27,7 @@ static int g_fail = 0;
 static int claim_oneshot()
 {
     char path[64];
-    std::snprintf(path, sizeof(path), "/tmp/.steamtools.load.%d", getpid());
+    std::snprintf(path, sizeof(path), "/tmp/.slssteam.load.%d", getpid());
     int fd = open(path, O_CREAT | O_RDWR | O_CLOEXEC, 0600);
     if (fd < 0) return -2;                       // open failure -> caller falls through
     if (flock(fd, LOCK_EX | LOCK_NB) != 0) { close(fd); return -1; } // already held
@@ -37,7 +37,7 @@ static int claim_oneshot()
 int main()
 {
     char path[64];
-    std::snprintf(path, sizeof(path), "/tmp/.steamtools.load.%d", getpid());
+    std::snprintf(path, sizeof(path), "/tmp/.slssteam.load.%d", getpid());
     unlink(path); // clean start
 
     printf("[1] two instances in one process: only the first hooks\n");

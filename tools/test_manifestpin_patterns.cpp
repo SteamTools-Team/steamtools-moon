@@ -88,8 +88,8 @@ int main(int argc, char** argv)
 	                        std::istreambuf_iterator<char>()};
 
 	const auto builders = findMatches(image, parse(
-	    "E8 ? ? ? ? 05 ? ? ? ? 55 89 E5 57 56 53 81 EC 8C 04 00 00 "
-	    "8B 55 10 8B 7D 0C 89 85 A0 FB FF FF 8B 45 08"));
+	    "E8 ? ? ? ? 05 ? ? ? ? 55 89 E5 57 56 53 81 EC 3C 04 00 00 "
+	    "8B 5D 08 8B 75 14 89 85 ? ? FF FF 8B 45 0C"));
 	if (builders.size() != 1)
 	{
 		std::cerr << "expected one BuildDepotDependency; found "

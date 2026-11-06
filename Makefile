@@ -49,17 +49,42 @@ ifeq ($(shell type mold &> /dev/null && echo "found"),found)
 	LDFLAGS += -fuse-ld=mold
 endif
 
-.PHONY: all build rebuild clean install release test-cmwire test-cmclient-loader test-clientcompat test-dlcids test-dlc-scope test-dlc-metadata test-config-path test-config-discovery test-filewatcher-burst test-provision-notice test-mtvar-contains test-synthmark test-appinfostate test-pattern-catalog test-pattern-cache test-pattern-refresh test-process-lock test-atomic-file test-cache-pair test-appinfo-transaction test-appinfo-reload test-audit-symbols test-audit-policy test-memhlp-target test-memhlp-prologue test-memhlp-pic test-utils-sha test-provision-cache test-provision-refresh test-provision-result test-provision-terminal test-pending-proton test-provision-schedule test-provision-pass test-runtime-dependencies test-thread-start test-steamstub-warmup test-boundedexecutor test-steamless-prewarm test-depotkey-scope test-curl-timeout test-contentserverdirectory test-manifest-index test-manifestselection test-manifeststore-io test-hotreload-inputs test-hotreload-package test-ownerqueue test-hotreload-capabilities test-libraryremoval test-pics test-prewarm-backoff test-yaml-runtime test-manifestpin-patterns test-optional-locators test-patternscan test-manifest-zip test-fakeappid-presence
+.PHONY: all build rebuild clean install release test-ascii test-cmwire test-cmclient-loader test-clientcompat test-dlcids test-dlc-scope test-dlc-metadata test-config-path test-config-discovery test-filewatcher-burst test-provision-notice test-mtvar-contains test-synthmark test-appinfostate test-pattern-catalog test-pattern-cache test-pattern-refresh test-process-lock test-process-runtime test-atomic-file test-cache-pair test-appinfo-transaction test-appinfo-reload test-audit-symbols test-audit-policy test-memhlp-target test-memhlp-prologue test-memhlp-pic test-utils-sha test-provision-cache test-provision-refresh test-provision-result test-provision-terminal test-pending-proton test-provision-schedule test-provision-pass test-runtime-dependencies test-thread-start test-steamstub-warmup test-steamstub-launchopt test-boundedexecutor test-steamless-prewarm test-depotkey-scope test-curl-timeout test-contentserverdirectory test-manifest-index test-manifestselection test-manifeststore-io test-hotreload-inputs test-hotreload-package test-ownerqueue test-hotreload-capabilities test-libraryremoval test-pics test-prewarm-backoff test-yaml-runtime test-manifestpin-patterns test-optional-locators test-patternscan test-manifest-zip test-fakeappid-presence test-fakeappid-wiring test-ticket test-familyshare test-familyshare-wiring
 .NOTPARALLEL: clean rebuild
 .PHONY: test-library-dates test-library-dates-hook
 .PHONY: test-achievements test-achievement-scope test-stats-audit
 .PHONY: test-stats-provenance
+.PHONY: test-manifestdonor test-manifestfetch
+.PHONY: test-reconcilepin-scan
+.PHONY: test-depotkey-recv-policy
+
+test-manifestdonor:
+	$(CXX) -std=c++20 -Wall -Wextra -Wpedantic -Werror \
+		tools/test_manifestdonor.cpp -o /tmp/test_manifestdonor
+	/tmp/test_manifestdonor
+
+test-manifestfetch:
+	$(CXX) -std=c++20 -Wall -Wextra -Wpedantic -Werror \
+		tools/test_manifestfetch.cpp -o /tmp/test_manifestfetch
+	/tmp/test_manifestfetch
 
 test-stats-provenance:
 	$(CXX) -m32 -std=c++20 -D_GLIBCXX_USE_CXX11_ABI=0 -isystem include -I src \
 		-ffunction-sections -fdata-sections tools/test_stats_provenance.cpp \
 		-Wl,--gc-sections -pthread -o /tmp/test_stats_provenance
 	/tmp/test_stats_provenance
+
+test-familyshare: obj/sdk/protobufs/steammessages_base.pb.o
+	$(CXX) -m32 -std=c++20 -D_GLIBCXX_USE_CXX11_ABI=0 -isystem include -I src \
+		-ffunction-sections -fdata-sections tools/test_familyshare.cpp \
+		src/sdk/CNetPacket.cpp $^ lib/libprotobuf-lite.a \
+		-Wl,--gc-sections -pthread -o /tmp/test_familyshare
+	/tmp/test_familyshare
+
+test-familyshare-wiring:
+	$(CXX) -std=c++20 -Wall -Wextra -Wpedantic -Werror \
+		tools/test_familyshare_wiring.cpp -o /tmp/test_familyshare_wiring
+	/tmp/test_familyshare_wiring
 
 test-manifest-zip:
 	$(CXX) -std=c++20 -Wall -Wextra -Wpedantic -Werror -I src \
@@ -83,9 +108,28 @@ test-fakeappid-presence: obj/sdk/protobufs/encrypted_app_ticket.pb.o \
                           obj/sdk/protobufs/steammessages_clientserver_2.pb.o
 	$(CXX) -m32 -std=c++20 -D_GLIBCXX_USE_CXX11_ABI=0 -isystem include -I src \
 		-ffunction-sections -fdata-sections tools/test_fakeappid_presence.cpp \
-		src/feats/fakeappid.cpp $^ lib/libprotobuf-lite.a \
+		src/feats/fakeappid.cpp src/sdk/CNetPacket.cpp $^ lib/libprotobuf-lite.a \
 		-Wl,--gc-sections -pthread -o /tmp/test_fakeappid_presence
 	/tmp/test_fakeappid_presence
+
+test-fakeappid-wiring:
+	$(CXX) -std=c++20 -Wall -Wextra -Wpedantic -Werror \
+		tools/test_fakeappid_wiring.cpp -o /tmp/test_fakeappid_wiring
+	/tmp/test_fakeappid_wiring
+
+test-ticket:
+	$(CXX) -m32 -std=c++20 -D_GLIBCXX_USE_CXX11_ABI=0 \
+		-Wall -Wextra -Wpedantic -Werror -I include -I src \
+		tools/test_ticket.cpp -o /tmp/test_ticket
+	/tmp/test_ticket
+
+test-process-runtime:
+	$(CXX) -m32 -std=c++20 -D_GLIBCXX_USE_CXX11_ABI=0 \
+		-Wall -Wextra -Wpedantic \
+		-ffunction-sections -fdata-sections -I include -I src \
+		tools/test_process_runtime.cpp src/process.cpp \
+		-Wl,--gc-sections -pthread -o /tmp/test_process_runtime
+	/tmp/test_process_runtime
 
 test-stats-audit: bin/SteamTools.so
 	$(CXX) -m32 -std=c++20 -rdynamic tools/test_stats_audit.cpp -ldl -o /tmp/test_stats_audit
@@ -182,8 +226,14 @@ test-dlcids:
 		tools/test_dlcids.cpp -o /tmp/test_dlcids
 	/tmp/test_dlcids
 
+test-ascii:
+	$(CXX) -std=c++20 -Wall -Wextra -Wpedantic -Werror -I src \
+		tools/test_ascii.cpp -o /tmp/test_ascii
+	/tmp/test_ascii
+
 test-dlc-scope:
-	$(CXX) -std=c++20 -Wall -Wextra -Wpedantic -I src -I include \
+	$(CXX) -m32 -std=c++20 -D_GLIBCXX_USE_CXX11_ABI=0 \
+		-Wall -Wextra -Wpedantic -I src -I include \
 		tools/test_dlc_scope.cpp src/feats/dlc.cpp \
 		src/feats/managed_dlc_scope.cpp -pthread \
 		-o /tmp/test_dlc_scope
@@ -205,6 +255,10 @@ test-config-discovery:
 	$(CXX) -std=c++20 -Wall -Wextra -Wpedantic -I src -I include \
 		tools/test_config_discovery.cpp -o /tmp/test_config_discovery
 	/tmp/test_config_discovery
+test-reconcilepin-scan:
+	$(CXX) -std=c++20 -Wall -Wextra -Wpedantic -I src \
+		tools/test_reconcilepin_scan.cpp -o /tmp/test_reconcilepin_scan
+	/tmp/test_reconcilepin_scan
 
 test-filewatcher-burst:
 	$(CXX) -std=c++20 -Wall -Wextra -Wpedantic -pthread -I src \
@@ -269,6 +323,11 @@ test-depotkey-scope:
 	$(CXX) -std=c++20 -Wall -Wextra -Wpedantic -I include \
 		tools/test_depotkey_scope.cpp -pthread -o /tmp/test_depotkey_scope
 	/tmp/test_depotkey_scope
+
+test-depotkey-recv-policy:
+	$(CXX) -std=c++20 -Wall -Wextra -Wpedantic -Werror \
+		tools/test_depotkey_recv_policy.cpp -o /tmp/test_depotkey_recv_policy
+	/tmp/test_depotkey_recv_policy
 
 test-memhlp-target:
 	$(CXX) -std=c++20 -Wall -Wextra -Wpedantic -I src -I include \
@@ -344,6 +403,11 @@ test-steamstub-warmup:
 	$(CXX) -std=c++20 -Wall -Wextra -Wpedantic -I src \
 		tools/test_steamstub_warmup.cpp -o /tmp/test_steamstub_warmup
 	/tmp/test_steamstub_warmup
+
+test-steamstub-launchopt:
+	$(CXX) -std=c++20 -Wall -Wextra -Wpedantic -I src \
+		tools/test_steamstub_launchopt.cpp -o /tmp/test_steamstub_launchopt
+	/tmp/test_steamstub_launchopt
 
 test-boundedexecutor:
 	$(CXX) -std=c++20 -pthread -Wall -Wextra -Wpedantic -Werror \

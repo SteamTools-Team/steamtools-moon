@@ -3,10 +3,10 @@
 Everything here is off or at its default unless you set it. None of it changes
 what SteamTools does, only *where* work runs and whether a trace is written.
 
-## `STEAMTOOLS_AFFTRACE` — thread-affinity trace (off by default)
+## `SLSSTEAM_AFFTRACE` — thread-affinity trace (off by default)
 
 ```bash
-STEAMTOOLS_AFFTRACE=1 <steam wrapper>
+SLSSTEAM_AFFTRACE=1 <steam wrapper>
 ```
 
 Accepted true values: `1`, `y`, `yes`, `on`, `true` (case-insensitive).
@@ -119,7 +119,7 @@ given, inside one exclusive execution window, so the total order of Steam-owned
 calls never inverts, and a single execution mutex guarantees two threads never
 run this subsystem's Steam-owned work at the same time.
 
-### `STEAMTOOLS_OWNER_QUEUE_MAX_STALE_MS` — the "owner never drains" answer
+### `SLSSTEAM_OWNER_QUEUE_MAX_STALE_MS` — the "owner never drains" answer
 
 Default `30000`, accepted range `0`–`600000`. Invalid values are ignored (with a
 warning in `~/.SteamTools.log`) and the default is used.
@@ -138,13 +138,13 @@ failure than "the call ran on the watcher thread, exactly as it always used to".
 * It runs the **whole** pending set inline, in order.
 * It is reported as a `warn` in `~/.SteamTools.log` and as a `QUEUE_STALE` /
   `direct_stale` record in the trace, so it is never silent.
-* `STEAMTOOLS_OWNER_QUEUE_MAX_STALE_MS=0` turns it off, i.e. explicitly chooses
+* `SLSSTEAM_OWNER_QUEUE_MAX_STALE_MS=0` turns it off, i.e. explicitly chooses
   "accept eventual execution on the owner thread, whenever that happens".
 
-### `STEAMTOOLS_OWNER_QUEUE` — disable the handoff entirely
+### `SLSSTEAM_OWNER_QUEUE` — disable the handoff entirely
 
 ```bash
-STEAMTOOLS_OWNER_QUEUE=off <steam wrapper>
+SLSSTEAM_OWNER_QUEUE=off <steam wrapper>
 ```
 
 Accepted false values: `0`, `off`, `no`, `n`, `false`, `disable`, `disabled`
@@ -155,7 +155,7 @@ hardening off.
 With the queue off, every watcher-originated Steam call runs on the calling
 thread, which is exactly the pre-hardening behaviour.
 
-`STEAMTOOLS_OWNER_QUEUE_DEADLINE_MS` is **obsolete**: the handoff no longer
+`SLSSTEAM_OWNER_QUEUE_DEADLINE_MS` is **obsolete**: the handoff no longer
 blocks, so there is no deadline to set. If it is still present in a wrapper
 script it is ignored and a warning is logged.
 

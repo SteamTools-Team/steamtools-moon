@@ -1,5 +1,7 @@
 #pragma once
 
+#include "sdk/steam.hpp"
+
 #include "libmem/libmem.h"
 
 #include <cstddef>
@@ -8,6 +10,7 @@
 
 class CAppOwnershipInfo;
 class CProtoBufMsgBase;
+class CUtlBuffer;
 
 struct gameserverdetails_t;
 struct GamePlayed_t;
@@ -15,6 +18,7 @@ struct GamePlayed_t;
 struct Pattern_t;
 
 struct CNetPacket;
+struct CRemoteClientPacket;
 enum EWebSocketOpCode : uint32_t;
 
 template<typename T>
@@ -85,9 +89,11 @@ namespace Hooks
 	typedef uint32_t(*CAPIJob_GetPlayerStats_t)(void*);
 
 	typedef void(*CProtoBufMsgBase_InitFromPacket_t)(CProtoBufMsgBase*, void*);
+	typedef void(*CCMInterface_RecvPkt_t)(void*, CNetPacket*);
 	typedef uint32_t(*CProtoBufMsgBase_Send_t)(CProtoBufMsgBase*);
 
 	typedef void(*CSteamEngine_Init_t)(void*);
+	typedef uint32_t(*CSteamEngine_ProcessIPCFrame_t)(void*, HSteamPipe, CUtlBuffer*, CUtlBuffer*);
 	typedef uint32_t(*CSteamEngine_SetAppIdForCurrentPipe_t)(void*, uint32_t, bool);
 
 	typedef gameserverdetails_t*(*CSteamMatchmakingServers_GetServerDetails_t)(void*, uint32_t, uint32_t);
@@ -102,13 +108,14 @@ namespace Hooks
 	typedef bool(*IClientUser_BLoggedOn_t)(void*);
 	typedef uint32_t(*IClientUser_BUpdateAppOwnershipTicket_t)(void*, uint32_t, bool);
 	typedef uint32_t(*IClientUser_GetAppOwnershipTicketExtendedData_t)(void*, uint32_t, void*, uint32_t, uint32_t*, uint32_t*, uint32_t*, uint32_t*);
-	typedef uint8_t(*IClientUser_IsUserSubscribedAppInTicket_t)(void*, uint32_t, uint32_t, uint32_t, uint32_t);
+	typedef bool(*IClientUser_GetEncryptedAppTicket_t)(void*, void*, uint32_t, uint32_t*);
+	typedef uint8_t(*IClientUser_IsUserSubscribedAppInTicket_t)(void*, uint64_t, uint32_t);
 	typedef bool(*IClientUser_RequiresLegacyCDKey_t)(void*, uint32_t, uint32_t*);
 
 	typedef bool(*IClientUtils_GetOfflineMode_t)(void*);
 
 	typedef bool(*CWebSocketConnection_BBuildAndAsyncSendFrame_t)(void*, EWebSocketOpCode, uint8_t*, uint32_t);
-	typedef void*(*CRemoteClientManager_RecvPkt_t)(void*, CNetPacket*);
+	typedef void*(*CRemoteClientManager_RecvPkt_t)(void*, CRemoteClientPacket*);
 
 	typedef bool(*CJobMgr_BRouteMsgToJob_t)(void*, void*, void*, void*);
 
@@ -119,6 +126,7 @@ namespace Hooks
 	extern DetourHook<CAPIJob_GetPlayerStats_t> CAPIJob_GetPlayerStats;
 
 	extern DetourHook<CProtoBufMsgBase_InitFromPacket_t> CProtoBufMsgBase_InitFromPacket;
+	extern DetourHook<CCMInterface_RecvPkt_t> CCMInterface_RecvPkt;
 	extern DetourHook<CProtoBufMsgBase_Send_t> CProtoBufMsgBase_Send;
 
 	extern DetourHook<CWebSocketConnection_BBuildAndAsyncSendFrame_t> CWebSocketConnection_BBuildAndAsyncSendFrame;
@@ -138,6 +146,7 @@ namespace Hooks
 	extern DetourHook<IClientUserStats_RunIPCFrame_t> IClientUserStats_RunIPCFrame;
 
 	extern DetourHook<CSteamEngine_Init_t> CSteamEngine_Init;
+	extern DetourHook<CSteamEngine_ProcessIPCFrame_t> CSteamEngine_ProcessIPCFrame;
 	extern DetourHook<CSteamEngine_SetAppIdForCurrentPipe_t> CSteamEngine_SetAppIdForCurrentPipe;
 
 	extern DetourHook<CUser_CheckAppOwnership_t> CUser_CheckAppOwnership;
@@ -175,6 +184,8 @@ namespace Hooks
 
 	extern VFTHook<IClientRemoteStorage_IsCloudEnabledForApp_t> IClientRemoteStorage_IsCloudEnabledForApp;
 
+	extern VFTHook<IClientUser_GetEncryptedAppTicket_t> IClientUser_GetEncryptedAppTicket;
+
 	extern VFTHook<IClientUtils_GetAppId_t> IClientUtils_GetAppId;
 	extern VFTHook<IClientUtils_GetOfflineMode_t> IClientUtils_GetOfflineMode;
 
@@ -182,10 +193,6 @@ namespace Hooks
 
 
 	extern DetourHook<ISteamMatchmakingPingResponse_ServerResponded_t> ISteamMatchmakingPingResponse_ServerResponded;
-
-
-	extern lm_address_t IClientUser_GetSteamId;
-
 	bool setup();
 	void place();
 	void remove();

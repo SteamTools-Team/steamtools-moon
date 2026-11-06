@@ -1,6 +1,7 @@
 #include "CSteamEngine.hpp"
 
 #include "IClientCompat.hpp"
+#include "CUtl.hpp"
 
 #include "../hooks.hpp"
 #include "../patterns.hpp"
@@ -23,25 +24,33 @@ bool executableAddress(lm_address_t address)
 }
 }
 
+CServerPipe* CSteamEngine::getServerPipe(const HSteamPipe pipe)
+{
+	const static auto fn = reinterpret_cast<CServerPipe*(*)(void*, HSteamPipe)>(
+		Patterns::CSteamEngine::GetServerPipe.address);
+	return fn(this, pipe);
+}
 
 CUser* CSteamEngine::getUser(uint32_t index)
 {
 	const static auto offset = *reinterpret_cast<lm_address_t*>(Patterns::CSteamEngine::Offset_User.address + 0x2);
-	const auto ppUserMap = *reinterpret_cast<uint8_t**>(this + offset);
-
-	// The user map is populated asynchronously during early bootstrap.
-	// Hooks that fire before login (e.g. LoadPackage for package 0 on a
-	// cold cache) can reach getUser(0) while the map pointer is still
-	// null; indexing it would deref ~address 4 and segfault.  Bail out
-	// so callers fall back to the CheckAppOwnership-captured user.
-	if (ppUserMap == nullptr)
+	const auto vec = reinterpret_cast<const CUtlVector<CUser*>*>(this + offset);
+	if (!vec->memory.base || index >= vec->size)
 	{
 		return nullptr;
 	}
 
-	const auto ppUser = ppUserMap + index * 8;
+	return *(&vec->memory.base[index * 2] + 1);
+}
 
-	return *reinterpret_cast<CUser**>(ppUser + 4);
+IClientUtils* CSteamEngine::getUtils()
+{
+	if (!getUser(0))
+	{
+		return nullptr;
+	}
+	const static lm_address_t offset = *reinterpret_cast<lm_address_t*>(Patterns::CSteamEngine::Offset_ClientUtils.address + 2);
+	return reinterpret_cast<IClientUtils*>(this + offset);
 }
 
 void CSteamEngine::setAppIdForCurrentPipe(uint32_t appId)

@@ -19,10 +19,13 @@ namespace VFTIndexes
 
 	namespace IClientCompat
 	{
-		// Verified from CCompatManager's Linux i386 vtable and call sites across
-		// three cached Steam client builds.
-		constexpr int SpecifyCompatTool = 4;
-		constexpr int GetCompatToolName = 7;
+		// CCompatManager's Linux i386 vtable.  The 2026-10 client (version
+		// 1791918634) removed three methods ahead of these (IClientCompatMap
+		// 19 -> 16 slots), moving them from 4/7 to 1/4.  Verified by identical
+		// slot bodies and by the IPC method order of IClientCompatMap;
+		// test_clientcompat checks both slots against an installed client.
+		constexpr int SpecifyCompatTool = 1;
+		constexpr int GetCompatToolName = 4;
 	}
 
 	namespace IClientAppManager
@@ -45,6 +48,8 @@ namespace VFTIndexes
 	{
 		constexpr int BLoggedOn = 4;
 		constexpr int GetSteamID = 10;
+		// Linux i386 IClientUserMap; the wrapper carries IPC hash 0xE0468CB4.
+		constexpr int GetEncryptedAppTicket = 121;
 	}
 
 	namespace IClientUtils
